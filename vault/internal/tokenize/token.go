@@ -9,8 +9,11 @@ import (
 )
 
 var (
-	ErrCipherToken404AES = errors.New("aes cipher not found in cipher map")
-	ErrCipherToken404IV  = errors.New("initialization vector (IV) not found in cipher map")
+	ErrCipherToken404AES                 = errors.New("aes cipher not found in cipher map")
+	ErrCipherToken404IV                  = errors.New("initialization vector (IV) not found in cipher map")
+	ErrTokenInvalidPadding               = errors.New("invalid token string: padded bytes larger than aes block size: 16")
+	ErrTokenInvalidPaddingNotHomogeneous = errors.New("invalid token string: padded bytes are not all the same")
+	ErrTokenInvalidBlockSize             = errors.New("invalid token string: decrypted bytes size is not a multiple of the block size")
 )
 
 type Token struct {
@@ -21,7 +24,7 @@ func (t *Token) String() string {
 	return t.token
 }
 
-func Tokenize(s string, cypher map[string]string) (*Token, error) {
+func tokenize(s string, cypher map[string]string) (*Token, error) {
 	// resolve aes cipher and initialization vector
 	var aesKey, iv string
 	var ok bool
@@ -29,7 +32,7 @@ func Tokenize(s string, cypher map[string]string) (*Token, error) {
 		return nil, ErrCipherToken404AES
 	}
 
-	if iv, ok = cypher[EnvKeInitializationVector]; !ok {
+	if iv, ok = cypher[EnvKeyInitializationVector]; !ok {
 		return nil, ErrCipherToken404IV
 	}
 
@@ -53,6 +56,59 @@ func Tokenize(s string, cypher map[string]string) (*Token, error) {
 	return &Token{token: token}, nil
 }
 
+func detokenize(token string, cypher map[string]string) (string, error) {
+	// resolve aes cipher and initialization vector
+	var aesKey, iv string
+	var ok bool
+	if aesKey, ok = cypher[EnvKeyAESCipher]; !ok {
+		return "", ErrCipherToken404AES
+	}
+
+	if iv, ok = cypher[EnvKeyInitializationVector]; !ok {
+		return "", ErrCipherToken404IV
+	}
+
+	// base64 decode token string
+	encryptedBytes, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return "", err
+	}
+
+	// begin decryption process
+	block, err := aes.NewCipher([]byte(aesKey))
+	if err != nil {
+		return "", err
+	}
+
+	// check if the ciphertext length is a multiple of the block size
+	if len(encryptedBytes)%aes.BlockSize != 0 {
+		return "", ErrTokenInvalidBlockSize
+	}
+
+	// decryption core
+	decrypted := make([]byte, len(encryptedBytes))
+	mode := cipher.NewCBCDecrypter(block, []byte(iv))
+	mode.CryptBlocks(decrypted, encryptedBytes)
+
+	// extract padding metadata
+	padding := int(decrypted[len(decrypted)-1])
+
+	// test decrypted padding byte integrity
+	if padding > aes.BlockSize || decrypted[len(decrypted)-1] == 0 {
+		return "", ErrTokenInvalidPadding
+	}
+
+	// check that all the padded strings are the same
+	for _, v := range decrypted[len(decrypted)-padding:] {
+		if padding != int(v) {
+			return "", ErrTokenInvalidPaddingNotHomogeneous
+		}
+	}
+
+	// return decrypted without padding
+	return string(decrypted[:len(decrypted)-padding]), nil
+}
+
 // getPaddedBlock returns a properly padded bytes block such that it is works with AES encrypting requirements. The padding is done following PKCS #7: https://en.wikipedia.org/wiki/PKCS_7
 func getPaddedBlock(s string) []byte {
 	// get bytes representation and length of string. this is needed for block checking and AES encryption.
@@ -64,7 +120,7 @@ func getPaddedBlock(s string) []byte {
 
 	// following PKCS #7, the padding to be added (if needed) will be a repetition of the byte representation of the reminder
 	// create a mod16 block
-	sPaddedBlock := make([]byte, length+paddingRequired)
+	sPaddedBlock := make([]byte, length)
 	// first copy the source bytes into the new mod16 block
 	copy(sPaddedBlock, sBytes)
 

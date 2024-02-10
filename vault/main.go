@@ -13,14 +13,14 @@ type InitConfig struct {
 
 func main() {
 	var i = InitConfig{}
-	pflag.BoolVarP(&i.debug, "debug", "d", false, "enable debug mode")
+	pflag.BoolVarP(&i.debug, "debug", "d", true, "enable debug mode")
 	pflag.Parse()
 
 	// starting
 	ctx := context.Background()
 	logger := vlog.New(i.debug)
 	srv := service.New(ctx, logger)
-	if err := srv.Run(); err != nil {
+	if err := srv.Run(ctx); err != nil {
 		logger.Logger().Fatal().Msgf("error while service is starting: %s\n", err.Error)
 	}
 }

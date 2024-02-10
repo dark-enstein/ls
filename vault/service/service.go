@@ -50,15 +50,15 @@ func (s *Service) Port() string {
 	return s.sc.port
 }
 
-func (s *Service) LoadHandlers() {
-	for k, v := range *NewVaultHandler() {
+func (s *Service) LoadHandlers(ctx context.Context) {
+	for k, v := range *NewVaultHandler(ctx, s.log) {
 		s.mux.HandleFunc(k, v)
 	}
 }
 
-func (s *Service) Run() error {
+func (s *Service) Run(ctx context.Context) error {
 	// load handlers into mux
-	s.LoadHandlers()
+	s.LoadHandlers(ctx)
 	// set mux into server
 	s.srv.Handler = s.mux
 	// start server
