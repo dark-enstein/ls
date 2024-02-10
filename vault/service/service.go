@@ -40,7 +40,7 @@ func New(ctx context.Context, log *vlog.Logger) *Service {
 		BaseContext:                  nil,
 		ConnContext:                  nil,
 	}
-	log.Logger().Debug().Msgf("initialized service with settings:\n\taddress: %v\n\tread timeout: %v\n\twrite timeout\n", ":"+port, readTimeout, writeTimeout)
+	log.Logger().Debug().Msgf("initialized service with settings:\n\taddress: %v\n\tread timeout: %v\n\twrite timeout: %v\n", ":"+port, readTimeout, writeTimeout)
 	return &Service{sc: &StartConfig{port: port}, manager: tokenize.NewManager(ctx, log), srv: hs, mux: http.NewServeMux(), log: log}
 }
 

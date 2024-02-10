@@ -7,6 +7,7 @@ import (
 	"github.com/dark-enstein/vault/internal/model"
 	"github.com/dark-enstein/vault/internal/tokenize"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -19,17 +20,22 @@ const (
 
 var (
 	KeyDelimiter = tokenize.KeyDelimiter
+	ParamVarID   = "id"
 )
 
 var (
 	Tokenize     = "/tokenize"
 	Detokenize   = "/detokenize"
-	GetTokens    = "/alltokens"
+	GetTokens    = "/all"
 	Introduction = "/new"
+	// GetTokensByID implementing parameterized routing
+	GetTokensByID = "/id/"
 )
 
 var (
-	ErrMethodNotAllowed = "method not allowed"
+	ErrMethodNotAllowed                = "method not allowed"
+	Err404                             = "404 not found"
+	ErrParameterizedVariableNotPassedF = "parameterized variable %s empty"
 )
 
 type VaultHandler map[string]func(w http.ResponseWriter, r *http.Request)
@@ -40,6 +46,7 @@ func NewVaultHandler(ctx context.Context, srv *Service) *VaultHandler {
 	vh[Tokenize] = TokenizeHandlerFunc(srv)
 	vh[Detokenize] = DetokenizeHandlerFunc(srv)
 	vh[GetTokens] = GetTokensHandler(srv)
+	vh[GetTokensByID] = GetTokensByIDHandler(srv)
 	//vh[Introduction] = newVaultHandleFunc
 	return &vh
 }
@@ -50,6 +57,65 @@ func VaultHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Request)
 		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Introduction))
 		fmt.Fprintf(w, "Welcome to Data Vault")
 		log.Logger().Info().Msgf("VaultHandlerFunc completed with no errors")
+	}
+}
+
+func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Request) {
+	log := srv.log
+	return func(w http.ResponseWriter, r *http.Request) {
+		var resp model.Response
+		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", GetTokensByID))
+
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			resp.Error = append(resp.Error, ErrMethodNotAllowed)
+			log.Logger().Error().Msg(ErrMethodNotAllowed)
+			resp.Code = CodeMethodNotAllowed
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// check that userid is passed in
+		afterPath := strings.TrimPrefix(r.URL.Path, GetTokensByID)
+		if len(afterPath) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, fmt.Sprintf(ErrParameterizedVariableNotPassedF, ParamVarID))
+			log.Logger().Error().Msgf(fmt.Sprintf(ErrParameterizedVariableNotPassedF, ParamVarID))
+			return
+		}
+
+		if strings.Contains(afterPath, "/") {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, Err404)
+			log.Logger().Error().Msgf("%s: %s", afterPath, Err404)
+			return
+		}
+
+		id := afterPath
+		var err error
+
+		token, err := srv.manager.GetTokenByID(id)
+		if err != nil {
+			resp.Error = append(resp.Error, err.Error())
+			log.Logger().Error().Msg(err.Error())
+			resp.Code = CodeInternalServerError
+			// return 400 status codes
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		resp.Resp = model.TokenizeResponse{
+			ID:   token.ID,
+			Data: token.Data,
+		}
+		resp.Code = CodeSuccess
+
+		// set header and return
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+		return
+
 	}
 }
 

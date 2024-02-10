@@ -18,6 +18,7 @@ import (
 
 var (
 	ErrKeyAlreadyExists = errors.New("key already exists. not overriding")
+	ErrKeyDoesNotExists = "key %s does not exist"
 	ErrDuplicateKeys    = errors.New("key already exists in request. accepted only the first one")
 )
 
@@ -72,6 +73,32 @@ func (m *Manager) GenerateCipher() error {
 	m.cipher[EnvKeyInitializationVector] = genAlphaNumericString(16)
 	// write to file
 	return godotenv.Write(m.cipher, m.cipherLoc)
+}
+
+// GetTokenByID returns the token owned by a specific ID/Key
+func (m *Manager) GetTokenByID(id string) (*model.Tokenize, error) {
+	log := m.log.Logger()
+	var tokenStr string
+	// pass a range func over the contents of the store and get the contents
+	if val, ok := m.store.Load(id); !ok {
+		return nil, fmt.Errorf(ErrKeyDoesNotExists, id)
+	} else {
+		tokenStr = fmt.Sprint(val)
+	}
+	log.Debug().Msg("successfully ranged over sync.Map store")
+
+	ss := strings.Split(id, KeyDelimiter)
+
+	log.Debug().Msg("found token in store")
+	return &model.Tokenize{
+		ID: ss[0],
+		Data: []model.Child{
+			{
+				Key:   ss[1],
+				Value: tokenStr,
+			},
+		},
+	}, nil
 }
 
 // GetAllTokens returns all tokens currently in the store
