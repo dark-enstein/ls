@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/dark-enstein/vault/internal/model"
 	"github.com/dark-enstein/vault/internal/tokenize"
-	"github.com/dark-enstein/vault/internal/vlog"
 	"net/http"
 )
 
@@ -35,47 +34,51 @@ var (
 
 type VaultHandler map[string]func(w http.ResponseWriter, r *http.Request)
 
-func NewVaultHandler(ctx context.Context, logger *vlog.Logger) *VaultHandler {
+func NewVaultHandler(ctx context.Context, srv *Service) *VaultHandler {
 	vh := make(VaultHandler, 10)
-	vh[Introduction] = VaultHandlerFunc(logger)
-	vh[Tokenize] = TokenizeHandlerFunc(logger)
-	vh[Detokenize] = DetokenizeHandlerFunc(logger)
-	vh[GetTokens] = GetTokensHandler(logger)
+	vh[Introduction] = VaultHandlerFunc(srv)
+	vh[Tokenize] = TokenizeHandlerFunc(srv)
+	vh[Detokenize] = DetokenizeHandlerFunc(srv)
+	vh[GetTokens] = GetTokensHandler(srv)
 	//vh[Introduction] = newVaultHandleFunc
 	return &vh
 }
 
-func VaultHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *http.Request) {
-	log := logger
+func VaultHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Request) {
+	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Introduction))
 		fmt.Fprintf(w, "Welcome to Data Vault")
 		log.Logger().Info().Msgf("VaultHandlerFunc completed with no errors")
 	}
 }
 
-func GetTokensHandler(logger *vlog.Logger) func(w http.ResponseWriter, r *http.Request) {
-	log := logger
+func GetTokensHandler(srv *Service) func(w http.ResponseWriter, r *http.Request) {
+	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", GetTokens))
 		var resp model.Response
 		var err error
 
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			resp.Error = append(resp.Error, ErrMethodNotAllowed)
+			log.Logger().Error().Msg(ErrMethodNotAllowed)
 			resp.Code = CodeMethodNotAllowed
 			json.NewEncoder(w).Encode(resp)
 			return
 		}
 
-		reqCtx := context.Background()
+		//reqCtx := context.Background()
 
 		// tokenize logic
-		manager := tokenize.NewManager(reqCtx, log)
+		manager := srv.manager
 
 		// user request valid, not proceed to process
 		tokens, err := manager.GetAllTokens()
 		if err != nil {
 			resp.Error = append(resp.Error, err.Error())
+			log.Logger().Error().Msg(err.Error())
 			resp.Code = CodeInternalServerError
 			// return 400 status codes
 			w.WriteHeader(http.StatusInternalServerError)
@@ -97,9 +100,10 @@ func GetTokensHandler(logger *vlog.Logger) func(w http.ResponseWriter, r *http.R
 	}
 }
 
-func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *http.Request) {
-	log := logger
+func DetokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Request) {
+	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Detokenize))
 		var resp model.Response
 		var detoken model.Detokenize
 		var err error
@@ -107,12 +111,13 @@ func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *h
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			resp.Error = append(resp.Error, ErrMethodNotAllowed)
+			log.Logger().Error().Msg(ErrMethodNotAllowed)
 			resp.Code = CodeMethodNotAllowed
 			json.NewEncoder(w).Encode(resp)
 			return
 		}
 
-		reqCtx := context.Background()
+		//reqCtx := context.Background()
 
 		w.Header().Set("Content-Type", "application/json")
 		jsonDecoder := json.NewDecoder(r.Body)
@@ -122,6 +127,7 @@ func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *h
 		// Check that json is a valid model.Tokenize structure
 		if err = jsonDecoder.Decode(&detoken); err != nil {
 			resp.Error = append(resp.Error, err.Error())
+			log.Logger().Error().Msg(err.Error())
 			resp.Code = CodeInvalidRequest
 			// return 400 status codes
 			w.WriteHeader(http.StatusBadRequest)
@@ -133,19 +139,7 @@ func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *h
 		var children []*model.ChildReceipt
 
 		// tokenize logic
-		manager := tokenize.NewManager(reqCtx, log)
-
-		// ensure user request parameter is correct and valid
-		//validationResp, ok := manager.Validate(&detoken)
-		//if !ok {
-		//	for i := 0; i < len(validationResp); i++ {
-		//		resp.Error = append(resp.Error, fmt.Sprintf("error with key %s: %s", validationResp[i].Key, validationResp[i].Err))
-		//	}
-		//	resp.Code = CodeInvalidRequest
-		//	w.WriteHeader(http.StatusBadRequest)
-		//	json.NewEncoder(w).Encode(resp)
-		//	return
-		//}
+		manager := srv.manager
 
 		// user request valid, not proceed to process
 		parentKey := detoken.ID
@@ -156,6 +150,7 @@ func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *h
 			found, decryptedStr, err = manager.Detokenize(combinedKeyName, detoken.Data[i].Value)
 			if err != nil || !found {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
+				log.Logger().Error().Msg(fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
 				resp.Code = CodeInternalServerError
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(resp)
@@ -185,9 +180,10 @@ func DetokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *h
 	}
 }
 
-func TokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *http.Request) {
-	log := logger
+func TokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Request) {
+	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Tokenize))
 		var resp model.Response
 		var token model.Tokenize
 		var err error
@@ -195,12 +191,13 @@ func TokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *htt
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			resp.Error = append(resp.Error, ErrMethodNotAllowed)
+			log.Logger().Error().Msg(ErrMethodNotAllowed)
 			resp.Code = CodeMethodNotAllowed
 			json.NewEncoder(w).Encode(resp)
 			return
 		}
 
-		reqCtx := context.Background()
+		//reqCtx := context.Background()
 
 		w.Header().Set("Content-Type", "application/json")
 		jsonDecoder := json.NewDecoder(r.Body)
@@ -210,6 +207,7 @@ func TokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *htt
 		// Check that json is a valid model.Tokenize structure
 		if err = jsonDecoder.Decode(&token); err != nil {
 			resp.Error = append(resp.Error, err.Error())
+			log.Logger().Error().Msg(err.Error())
 			resp.Code = CodeInvalidRequest
 			// return 400 status codes
 			w.WriteHeader(http.StatusBadRequest)
@@ -221,13 +219,14 @@ func TokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *htt
 		var children []model.Child
 
 		// tokenize logic
-		manager := tokenize.NewManager(reqCtx, log)
+		manager := srv.manager
 
 		// ensure user request parameter is correct and valid
 		validationResp, ok := manager.Validate(&token)
 		if !ok {
 			for i := 0; i < len(validationResp); i++ {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s: %s", validationResp[i].Key, validationResp[i].Err))
+				log.Logger().Error().Msg(fmt.Sprintf("error with key %s: %s", validationResp[i].Key, validationResp[i].Err))
 			}
 			resp.Code = CodeInvalidRequest
 			w.WriteHeader(http.StatusBadRequest)
@@ -243,6 +242,7 @@ func TokenizeHandlerFunc(logger *vlog.Logger) func(w http.ResponseWriter, r *htt
 			tokenStr, err = manager.Tokenize(combinedKeyName, token.Data[i].Value)
 			if err != nil {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
+				log.Logger().Error().Msg(fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
 				resp.Code = CodeInternalServerError
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(resp)

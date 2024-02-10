@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/dark-enstein/vault/internal/tokenize"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"net/http"
 	"time"
@@ -12,10 +13,11 @@ const (
 )
 
 type Service struct {
-	sc  *StartConfig
-	srv *http.Server
-	mux *http.ServeMux
-	log *vlog.Logger
+	sc      *StartConfig
+	manager *tokenize.Manager
+	srv     *http.Server
+	mux     *http.ServeMux
+	log     *vlog.Logger
 }
 
 func New(ctx context.Context, log *vlog.Logger) *Service {
@@ -38,8 +40,8 @@ func New(ctx context.Context, log *vlog.Logger) *Service {
 		BaseContext:                  nil,
 		ConnContext:                  nil,
 	}
-	log.Logger().Debug().Msgf("settings:\n\taddress: %v\n\tread timeout: %v\n\t write timeout\n", ":"+port, readTimeout, writeTimeout)
-	return &Service{sc: &StartConfig{port: port}, srv: hs, mux: http.NewServeMux(), log: log}
+	log.Logger().Debug().Msgf("initialized service with settings:\n\taddress: %v\n\tread timeout: %v\n\twrite timeout\n", ":"+port, readTimeout, writeTimeout)
+	return &Service{sc: &StartConfig{port: port}, manager: tokenize.NewManager(ctx, log), srv: hs, mux: http.NewServeMux(), log: log}
 }
 
 type StartConfig struct {
@@ -51,7 +53,7 @@ func (s *Service) Port() string {
 }
 
 func (s *Service) LoadHandlers(ctx context.Context) {
-	for k, v := range *NewVaultHandler(ctx, s.log) {
+	for k, v := range *NewVaultHandler(ctx, s) {
 		s.mux.HandleFunc(k, v)
 	}
 }
