@@ -7,6 +7,7 @@ import (
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/joho/godotenv"
 	"github.com/pkg/errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -48,18 +49,19 @@ func (f *File) Connect(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// confirm base path exists
-	base := filepath.Base(abs)
-	if _, err = os.Stat(base); err != nil {
+	// confirm dir of path exists
+	dir := filepath.Dir(abs)
+	if _, err = os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
-			log.Info().Msgf("base path %s does not exist, creating it\n", base)
-			err := os.MkdirAll(base, 0777)
+			log.Info().Msgf("base dir %s does not exist, creating it\n", dir)
+			err := os.MkdirAll(dir, 0777)
 			if err != nil {
-				log.Info().Msgf("error while creating base path %s: %s\n", base, err.Error())
+				log.Info().Msgf("error while creating base dir %s: %s\n", dir, err.Error())
 				return false, err
 			}
+		} else {
+			return false, err
 		}
-		return false, err
 	}
 
 	// create file database
@@ -88,7 +90,7 @@ func (f *File) Store(id string, token any) error {
 		return fmt.Errorf("error encountered while reading from file store: %s\n", err.Error())
 	}
 
-	var storeMap map[string]string
+	var storeMap = map[string]string{}
 
 	// harvest currently stored values if file store is not empty
 	if len(content) > 0 {
@@ -129,6 +131,12 @@ func (f *File) Store(id string, token any) error {
 func (f *File) read() ([]byte, error) {
 	var b bytes.Buffer
 	log := f.logger.Logger()
+	f.Lock()
+	defer f.Unlock()
+	_, err := f.fd.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
 	i, err := b.ReadFrom(f.fd)
 	if i != int64(b.Len()) {
 		log.Debug().Msgf("number of read bytes %d does not match length in the bytes buffer %d\n", i, b.Len())
@@ -150,7 +158,7 @@ func (f *File) Retrieve(id string) (string, error) {
 		return "", fmt.Errorf("error encountered while reading from file store: %s\n", err.Error())
 	}
 
-	var storeMap map[string]string
+	var storeMap = map[string]string{}
 
 	// if file is empty return empty
 	if len(content) == 0 {
@@ -187,7 +195,7 @@ func (f *File) RetrieveAll() (map[string]string, error) {
 		return nil, fmt.Errorf("error encountered while reading from file store: %s\n", err.Error())
 	}
 
-	var storeMap map[string]string
+	var storeMap = map[string]string{}
 
 	// if file is empty return empty
 	if len(content) == 0 {
@@ -216,7 +224,7 @@ func (f *File) Delete(id string) (bool, error) {
 		return true, fmt.Errorf("error encountered while reading from file store: %s\n", err.Error())
 	}
 
-	var storeMap map[string]string
+	var storeMap = map[string]string{}
 
 	// if file is empty return empty
 	if len(content) == 0 {
@@ -256,7 +264,7 @@ func (f *File) Patch(id string, token any) (bool, error) {
 		return true, fmt.Errorf("error encountered while reading from file store: %s\n", err.Error())
 	}
 
-	var storeMap map[string]string
+	var storeMap = map[string]string{}
 
 	// if file is empty return empty
 	if len(content) == 0 {
