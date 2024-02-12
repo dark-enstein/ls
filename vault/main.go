@@ -21,6 +21,6 @@ func main() {
 	logger := vlog.New(i.debug)
 	srv := service.New(ctx, logger)
 	if err := srv.Run(ctx); err != nil {
-		logger.Logger().Fatal().Msgf("error while service is starting: %s\n", err.Error)
+		logger.Logger().Fatal().Msgf("error while service is starting: %s\n", err.Error())
 	}
 }

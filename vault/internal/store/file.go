@@ -100,12 +100,10 @@ func (f *File) Store(ctx context.Context, id string, token any) error {
 	var tokenStr string
 
 	// ensure that token type is string
-	switch t := token.(type) {
-	case string:
-		tokenStr = fmt.Sprintf("%s", t)
-	default:
-		log.Error().Msgf("token of type string required: %s\n", err.Error())
-		return fmt.Errorf("token of type string required: %s\n", err.Error())
+	var b bool
+	if b, tokenStr = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return fmt.Errorf(ErrTokenTypeNotString)
 	}
 
 	// check if ID already exists
@@ -282,12 +280,10 @@ func (f *File) Patch(ctx context.Context, id string, token any) (bool, error) {
 	var tokenStr string
 
 	// ensure that token type is string
-	switch t := token.(type) {
-	case string:
-		tokenStr = fmt.Sprintf("%s", t)
-	default:
-		log.Error().Msgf("token of type string required: %s\n", err.Error())
-		return false, fmt.Errorf("token of type string required: %s\n", err.Error())
+	var b bool
+	if b, tokenStr = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return false, fmt.Errorf(ErrTokenTypeNotString)
 	}
 
 	// check if ID exists

@@ -64,6 +64,7 @@ func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Requ
 	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
 		var resp model.Response
+		var ctx context.Context
 		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", GetTokensByID))
 
 		if r.Method != http.MethodGet {
@@ -94,7 +95,7 @@ func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Requ
 		id := afterPath
 		var err error
 
-		token, err := srv.manager.GetTokenByID(id)
+		token, err := srv.manager.GetTokenByID(ctx, id)
 		if err != nil {
 			resp.Error = append(resp.Error, err.Error())
 			log.Logger().Error().Msg(err.Error())
@@ -123,6 +124,7 @@ func GetTokensHandler(srv *Service) func(w http.ResponseWriter, r *http.Request)
 	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", GetTokens))
+		ctx := context.Background()
 		var resp model.Response
 		var err error
 
@@ -141,7 +143,7 @@ func GetTokensHandler(srv *Service) func(w http.ResponseWriter, r *http.Request)
 		manager := srv.manager
 
 		// user request valid, not proceed to process
-		tokens, err := manager.GetAllTokens()
+		tokens, err := manager.GetAllTokens(ctx)
 		if err != nil {
 			resp.Error = append(resp.Error, err.Error())
 			log.Logger().Error().Msg(err.Error())
@@ -170,6 +172,7 @@ func DetokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Req
 	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Detokenize))
+		ctx := context.Background()
 		var resp model.Response
 		var detoken model.Detokenize
 		var err error
@@ -213,7 +216,7 @@ func DetokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Req
 			var found bool
 			childKey := detoken.Data[i].Key
 			combinedKeyName := tokenize.GetCombinedKey(parentKey, childKey)
-			found, decryptedStr, err = manager.Detokenize(combinedKeyName, detoken.Data[i].Value)
+			found, decryptedStr, err = manager.Detokenize(ctx, combinedKeyName, detoken.Data[i].Value)
 			if err != nil || !found {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
 				log.Logger().Error().Msg(fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
@@ -250,6 +253,7 @@ func TokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Reque
 	log := srv.log
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Logger().Info().Msg(fmt.Sprintf("received a request on %s", Tokenize))
+		ctx := context.Background()
 		var resp model.Response
 		var token model.Tokenize
 		var err error
@@ -288,7 +292,7 @@ func TokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Reque
 		manager := srv.manager
 
 		// ensure user request parameter is correct and valid
-		validationResp, ok := manager.Validate(&token)
+		validationResp, ok := manager.Validate(ctx, &token)
 		if !ok {
 			for i := 0; i < len(validationResp); i++ {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s: %s", validationResp[i].Key, validationResp[i].Err))
@@ -305,7 +309,7 @@ func TokenizeHandlerFunc(srv *Service) func(w http.ResponseWriter, r *http.Reque
 		for i := 0; i < len(token.Data); i++ {
 			childKey := token.Data[i].Key
 			combinedKeyName := tokenize.GetCombinedKey(parentKey, childKey)
-			tokenStr, err = manager.Tokenize(combinedKeyName, token.Data[i].Value)
+			tokenStr, err = manager.Tokenize(ctx, combinedKeyName, token.Data[i].Value)
 			if err != nil {
 				resp.Error = append(resp.Error, fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))
 				log.Logger().Error().Msg(fmt.Sprintf("error with key %s.%s: %s", parentKey, childKey, err.Error()))

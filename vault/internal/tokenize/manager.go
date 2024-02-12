@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 )
@@ -30,20 +29,25 @@ var (
 )
 
 type Manager struct {
-	store     *sync.Map
+	store     store.Store
 	cipher    map[string]string
 	cipherLoc string
 	log       *vlog.Logger
 }
 
 // NewManager creates a new instance of Manager. It manages token operations (retrieval, storage, servicing) throughout the lifetime of the server.
-func NewManager(ctx context.Context, log *vlog.Logger) *Manager {
-	var manager = Manager{}
+func NewManager(ctx context.Context, log *vlog.Logger, opts ...Options) *Manager {
+	var manager = &Manager{}
 	manager.log = log
 	manager.cipherLoc = DefaultCipherLoc
 	manager.cipher = map[string]string{}
-	manager.store = store.NewSyncMap()
-	//manager.store = store.NewSyncMap()
+	if len(opts) == 0 {
+		manager.store = store.NewSyncMap(ctx, manager.log)
+	} else {
+		for i := 0; i < len(opts); i++ {
+			opts[i](manager)
+		}
+	}
 	var err error
 
 	// if cipher file doesn't exist
@@ -63,7 +67,7 @@ func NewManager(ctx context.Context, log *vlog.Logger) *Manager {
 		}
 	}
 
-	return &manager
+	return manager
 }
 
 // GenerateCipher generates a new AES cipher and Initialization Vector pais, and persists it to disk
@@ -77,16 +81,16 @@ func (m *Manager) GenerateCipher() error {
 }
 
 // GetTokenByID returns the token owned by a specific ID/Key
-func (m *Manager) GetTokenByID(id string) (*model.Tokenize, error) {
+func (m *Manager) GetTokenByID(ctx context.Context, id string) (*model.Tokenize, error) {
 	log := m.log.Logger()
 	var tokenStr string
 	// pass a range func over the contents of the store and get the contents
-	if val, ok := m.store.Load(id); !ok {
+	if val, err := m.store.Retrieve(ctx, id); err != nil {
 		return nil, fmt.Errorf(ErrKeyDoesNotExists, id)
 	} else {
 		tokenStr = fmt.Sprint(val)
 	}
-	log.Debug().Msg("successfully ranged over sync.Map store")
+	log.Debug().Msg("successfully ranged over store data")
 
 	ss := strings.Split(id, KeyDelimiter)
 
@@ -103,18 +107,15 @@ func (m *Manager) GetTokenByID(id string) (*model.Tokenize, error) {
 }
 
 // GetAllTokens returns all tokens currently in the store
-func (m *Manager) GetAllTokens() ([]*model.Tokenize, error) {
+func (m *Manager) GetAllTokens(ctx context.Context) ([]*model.Tokenize, error) {
 	log := m.log.Logger()
 	allTokens := map[string]*model.Tokenize{}
 
-	// create a bucket for all the tokens
-	var allTokenMap = map[string]string{}
 	// pass a range func over the contents of the store and get the contents
-	m.store.Range(func(key, value interface{}) bool {
-		allTokenMap[fmt.Sprint(key)] = fmt.Sprint(value)
-		return true
-	})
-	log.Debug().Msg("successfully ranged over sync.Map store")
+	allTokenMap, err := m.store.RetrieveAll(ctx)
+	if err != nil {
+		log.Error().Msgf("error while retrieving all keys: %s\n", err.Error())
+	}
 
 	// parse all tokens into a slice of model.Tokenize
 	for k, v := range allTokenMap {
@@ -155,8 +156,8 @@ type ValidateResponse struct {
 }
 
 // Validate is the high level api for validating all the user provided data
-func (m *Manager) Validate(token *model.Tokenize) ([]*ValidateResponse, bool) {
-	keysValidationResp, ok := m.ValidateKeys(token)
+func (m *Manager) Validate(ctx context.Context, token *model.Tokenize) ([]*ValidateResponse, bool) {
+	keysValidationResp, ok := m.ValidateKeys(ctx, token)
 	if !ok {
 		m.log.Logger().Error().Msgf("error while validating keys")
 		return keysValidationResp, ok
@@ -167,7 +168,7 @@ func (m *Manager) Validate(token *model.Tokenize) ([]*ValidateResponse, bool) {
 }
 
 // ValidateKeys validates the Keys used in the request, ensuring it doesn't already exist, and that it conforms with the standards.
-func (m *Manager) ValidateKeys(token *model.Tokenize) ([]*ValidateResponse, bool) {
+func (m *Manager) ValidateKeys(ctx context.Context, token *model.Tokenize) ([]*ValidateResponse, bool) {
 	tempMap := make(map[string]bool, len(token.Data))
 	valResp := []*ValidateResponse{}
 	var verdict = true
@@ -177,54 +178,68 @@ func (m *Manager) ValidateKeys(token *model.Tokenize) ([]*ValidateResponse, bool
 		combinedKeyName := GetCombinedKey(parentKey, childKey)
 		// check that key doesn't already exist
 		var err error
-		if tempMap, err = keysIsPresent(combinedKeyName, tempMap, m.store); err != nil {
+		if err = keysIsPresent(ctx, combinedKeyName, tempMap, m.store); err != nil {
 			verdict = false
-			valResp = append(valResp, &ValidateResponse{combinedKeyName, err})
+			valResp = append(valResp, &ValidateResponse{combinedKeyName, fmt.Errorf("error validating keys: %s\n", err.Error())})
 		}
 	}
 	return valResp, verdict
 }
 
-func keysIsPresent(key string, tempStore map[string]bool, store *sync.Map) (map[string]bool, error) {
+func keysIsPresent(ctx context.Context, key string, tempStore map[string]bool, store store.Store) error {
 	if _, ok := tempStore[key]; ok {
-		return tempStore, ErrDuplicateKeys
+		return ErrDuplicateKeys
 	}
-	if _, ok := store.Load(key); ok {
-		return tempStore, ErrKeyAlreadyExists
+	if _, err := store.Retrieve(ctx, key); err == nil {
+		return err
 	}
+
 	tempStore[key] = true
-	return tempStore, nil
+	return nil
 }
 
 // Tokenize manages the tokenization, and stores generated tokens in an internal store, for easy retrieval
-func (m *Manager) Tokenize(key, val string) (string, error) {
-	if _, ok := m.store.Load(key); ok {
-		m.log.Logger().Error().Msg(ErrKeyAlreadyExists.Error())
-		return "", ErrKeyAlreadyExists
-	}
+func (m *Manager) Tokenize(ctx context.Context, key, val string) (string, error) {
+
+	// tokenize
 	token, err := tokenize(val, m.cipher)
 	if err != nil {
-		m.log.Logger().Error().Msgf("error occured while generating token: %s\n", err.Error())
+		m.log.Logger().Error().Msgf("error occurred while generating token: %s\n", err.Error())
 		return "", err
 	}
-	m.store.Store(key, token.token)
+
+	// proceed to store generated token
+	err = m.store.Store(ctx, key, token.token)
+	if err != nil {
+		m.log.Logger().Error().Msgf("error occurred while storing token: %s\n", err.Error())
+		return "", err
+	}
 	return token.token, nil
 }
 
 // Detokenize retrieves the value represented by a particular token, identified by the particular key
-func (m *Manager) Detokenize(key, val string) (bool, string, error) {
-	// check if key exists
-	if _, ok := m.store.Load(key); !ok {
-		m.log.Logger().Error().Msg("token with key id does not exist")
-		return false, "", errors.New("token with key id does not exist")
-	}
+func (m *Manager) Detokenize(ctx context.Context, key, token string) (bool, string, error) {
 
-	decryptedStr, err := detokenize(val, m.cipher)
+	// ensure that token matches what is in store
+	storedToken, err := m.store.Retrieve(ctx, key)
 	if err != nil {
-		m.log.Logger().Error().Msgf("error occured while decrypting token: %s\n", err.Error())
+		m.log.Logger().Error().Msgf("error while confirming token key: %s\n", err.Error())
 		return false, "", err
 	}
-	m.store.Store(key, decryptedStr)
+
+	// check if the stored token match the provided token. abort if no match
+	if storedToken != token {
+		m.log.Logger().Error().Msgf("provided token does not match stored token. provided token: %s\n", token)
+		return false, "", err
+	}
+
+	// detokenize
+	decryptedStr, err := detokenize(token, m.cipher)
+	if err != nil {
+		m.log.Logger().Error().Msgf("error occurred while decrypting token: %s\n", err.Error())
+		return false, "", err
+	}
+
 	return true, decryptedStr, nil
 }
 

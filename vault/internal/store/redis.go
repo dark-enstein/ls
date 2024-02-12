@@ -147,16 +147,15 @@ func (r *Redis) Store(ctx context.Context, id string, token any) (err error) {
 	var value string
 
 	// ensure that token type is string
-	switch t := token.(type) {
-	case string:
-		value = fmt.Sprintf("%s", t)
-	default:
-		log.Error().Msgf("token of type string required")
-		return fmt.Errorf("token of type string required")
+	var tokenStr string
+	var b bool
+	if b, tokenStr = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return fmt.Errorf(ErrTokenTypeNotString)
 	}
 
 	// check if key already exists
-	if r.IsExists(ctx, token.(string)) {
+	if r.IsExists(ctx, tokenStr) {
 		log.Error().Msgf("key already exists")
 		return err
 	}
@@ -238,12 +237,10 @@ func (r *Redis) Patch(ctx context.Context, id string, token any) (bool, error) {
 	var value string
 
 	// ensure that token type is string
-	switch t := token.(type) {
-	case string:
-		value = fmt.Sprintf("%s", t)
-	default:
-		log.Error().Msgf("token of type string required")
-		return false, fmt.Errorf("token of type string required")
+	var b bool
+	if b, value = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return false, fmt.Errorf(ErrTokenTypeNotString)
 	}
 
 	status, err := r.Client().Set(ctx, id, value, DefaultTTL).Result()

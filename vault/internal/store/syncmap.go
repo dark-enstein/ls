@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"sync"
@@ -27,31 +28,53 @@ func (m *Map) Connect(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (m *Map) Store(ctx context.Context, id string, token any) (bool, error) {
+func (m *Map) Store(ctx context.Context, id string, token any) error {
 	log := m.logger.Logger()
+
 	// check if key exists
 	if m.IsExist(id) {
 		log.Error().Msgf("key %s already exists, aborting\n", id)
-		return false, fmt.Errorf("key %s already exists, aborting\n", id)
+		return fmt.Errorf("key %s already exists, aborting\n", id)
 	}
 
-	m.scaffold.Store(id, token)
+	// ensure that token underlying type is a string
+	var tokenStr string
+	var b bool
+	if b, tokenStr = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return fmt.Errorf(ErrTokenTypeNotString)
+	}
+
+	// now store key value pair
+	m.scaffold.Store(id, tokenStr)
+
+	// confirm that key value pair is correctly inserted
 	if _, ok := m.scaffold.Load(id); !ok {
 		log.Debug().Msgf("error occurred while confirming insertion")
-		return false, fmt.Errorf("error occurred while confirming insertion")
+		return fmt.Errorf("error occurred while confirming insertion")
 	}
-	return true, nil
+	return nil
 }
 
 func (m *Map) Retrieve(ctx context.Context, id string) (string, error) {
 	log := m.logger.Logger()
+
+	// first check if key already exists
 	val, ok := m.scaffold.Load(id)
 	if !ok {
-		log.Debug().Msgf("error occured while retrieving value from store using key id: %s\n", id)
+		log.Debug().Msgf("error occurred while retrieving value from store using key id: %s\n", id)
 		return "", fmt.Errorf("error occured while retrieving value from store using key id: %s\n", id)
 	}
 
-	return val.(string), nil
+	// ensyre that returned value is string
+	var tokenStr string
+	var b bool
+	if b, tokenStr = InterfaceIsString(val); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return tokenStr, errors.New("internal error: " + ErrTokenTypeNotString + ". check this\n")
+	}
+
+	return tokenStr, nil
 }
 
 func (m *Map) RetrieveAll(ctx context.Context) (map[string]string, error) {
@@ -94,8 +117,16 @@ func (m *Map) Patch(ctx context.Context, id string, token any) (bool, error) {
 		log.Error().Msgf("key with id exists, patching", id)
 	}
 
+	// ensyre that returned value passed in is string
+	var tokenStr string
+	var b bool
+	if b, tokenStr = InterfaceIsString(token); !b {
+		log.Error().Msgf(ErrTokenTypeNotString)
+		return false, fmt.Errorf(ErrTokenTypeNotString)
+	}
+
 	// patch key in map
-	m.scaffold.Store(id, token)
+	m.scaffold.Store(id, tokenStr)
 	log.Debug().Msgf("successfully updated key with id: %s\n", id)
 
 	return true, nil
@@ -103,13 +134,16 @@ func (m *Map) Patch(ctx context.Context, id string, token any) (bool, error) {
 
 func (m *Map) Flush(ctx context.Context) (bool, error) {
 
-	// pass a range func over the contents of the store and delete the contents
+	// simulate flushing by assigning a new instance of sync.Map to scaffold
 	m.scaffold = &sync.Map{}
 
 	return true, nil
 }
 
 func (m *Map) Close(ctx context.Context) error {
+	if b, err := m.Flush(ctx); !b || err != nil {
+		return err
+	}
 	return nil
 }
 
