@@ -43,6 +43,7 @@ func NewManager(ctx context.Context, log *vlog.Logger) *Manager {
 	manager.cipherLoc = DefaultCipherLoc
 	manager.cipher = map[string]string{}
 	manager.store = store.NewSyncMap()
+	//manager.store = store.NewSyncMap()
 	var err error
 
 	// if cipher file doesn't exist
