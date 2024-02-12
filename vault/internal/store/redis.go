@@ -144,7 +144,6 @@ func (r *Redis) Client() *redis.Client {
 // Store stores a key/value pair in the database.
 func (r *Redis) Store(ctx context.Context, id string, token any) (err error) {
 	log := r.logger.Logger()
-	var value string
 
 	// ensure that token type is string
 	var tokenStr string
@@ -161,7 +160,7 @@ func (r *Redis) Store(ctx context.Context, id string, token any) (err error) {
 	}
 
 	// check if key already exists
-	status, err := r.Client().Set(ctx, id, value, DefaultTTL).Result()
+	status, err := r.Client().Set(ctx, id, tokenStr, DefaultTTL).Result()
 	if err != nil {
 		log.Error().Msgf(ErrWithOperation, err.Error())
 		return err

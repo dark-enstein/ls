@@ -36,14 +36,16 @@ type Manager struct {
 }
 
 // NewManager creates a new instance of Manager. It manages token operations (retrieval, storage, servicing) throughout the lifetime of the server.
-func NewManager(ctx context.Context, log *vlog.Logger, opts ...Options) *Manager {
+func NewManager(ctx context.Context, logger *vlog.Logger, opts ...Options) *Manager {
+	log := logger.Logger()
 	var manager = &Manager{}
-	manager.log = log
+	manager.log = logger
 	manager.cipherLoc = DefaultCipherLoc
 	manager.cipher = map[string]string{}
 	if len(opts) == 0 {
 		manager.store = store.NewSyncMap(ctx, manager.log)
 	} else {
+		log.Debug().Msg("a separate store option was passed in")
 		for i := 0; i < len(opts); i++ {
 			opts[i](manager)
 		}

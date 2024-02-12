@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/dark-enstein/vault/internal/store"
 	"github.com/dark-enstein/vault/internal/tokenize"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"net/http"
@@ -40,8 +41,14 @@ func New(ctx context.Context, log *vlog.Logger) *Service {
 		BaseContext:                  nil,
 		ConnContext:                  nil,
 	}
+
+	store, err := store.NewRedis(store.DefaultRedisConnectionString, log)
+	if err != nil {
+		log.Logger().Debug().Msgf("could not initialize redis backend: error: %s\n", err.Error())
+	}
+
 	log.Logger().Debug().Msgf("initialized service with settings:\n\taddress: %v\n\tread timeout: %v\n\twrite timeout: %v\n", ":"+port, readTimeout, writeTimeout)
-	return &Service{sc: &StartConfig{port: port}, manager: tokenize.NewManager(ctx, log), srv: hs, mux: http.NewServeMux(), log: log}
+	return &Service{sc: &StartConfig{port: port}, manager: tokenize.NewManager(ctx, log, tokenize.WithStore(store)), srv: hs, mux: http.NewServeMux(), log: log}
 }
 
 type StartConfig struct {
