@@ -50,7 +50,11 @@ func NewManager(ctx context.Context, logger *vlog.Logger, opts ...Options) *Mana
 			opts[i](manager)
 		}
 	}
-	var err error
+
+	b, err := manager.store.Connect(ctx)
+	if err != nil || !b {
+		log.Debug().Msgf("connection failed to store: %s\n", err.Error())
+	}
 
 	// if cipher file doesn't exist
 	if _, err := os.Stat(manager.cipherLoc); err != nil {

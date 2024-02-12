@@ -76,8 +76,9 @@ func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		// check that userid is passed in
+		// check that usesrid is passed in
 		afterPath := strings.TrimPrefix(r.URL.Path, GetTokensByID)
+		log.Logger().Debug().Msg(fmt.Sprintf("after path: %s", afterPath))
 		if len(afterPath) == 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, fmt.Sprintf(ErrParameterizedVariableNotPassedF, ParamVarID))
@@ -85,6 +86,7 @@ func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
+		// id/<id>
 		if strings.Contains(afterPath, "/") {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, Err404)
@@ -93,6 +95,7 @@ func GetTokensByIDHandler(srv *Service) func(w http.ResponseWriter, r *http.Requ
 		}
 
 		id := afterPath
+		log.Logger().Debug().Msg(fmt.Sprintf("id after after path: %s", id))
 		var err error
 
 		token, err := srv.manager.GetTokenByID(ctx, id)
