@@ -114,7 +114,7 @@ func (m *Map) Patch(ctx context.Context, id string, token any) (bool, error) {
 
 	// check if key exists
 	if m.IsExist(id) {
-		log.Error().Msgf("key with id exists, patching", id)
+		log.Error().Msgf("key with id %v exists, patching", id)
 	}
 
 	// ensyre that returned value passed in is string
