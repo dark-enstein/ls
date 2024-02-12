@@ -1,6 +1,7 @@
 package vlog
 
 import (
+	"context"
 	"fmt"
 	"github.com/rs/zerolog"
 	"os"
@@ -41,4 +42,10 @@ func resolveLogger(debug bool) zerolog.Level {
 
 func (l *Logger) Logger() *zerolog.Logger {
 	return l.l
+}
+
+// Printf implements the redis.internal.Logger interface so it can be used
+func (l *Logger) Printf(ctx context.Context, format string, v ...interface{}) {
+	l.Logger().Printf(format, v)
+	return
 }

@@ -82,6 +82,10 @@ func (suite *FileTestSuite) TestConnect() {
 		b, err := file.Connect(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Equalf(suite.tableConnect[i].expected, b, "expected %v, got %s\n", suite.tableConnect[i].expected, b)
+		// just for appropriateness. the same principle applies to actual databases too. clean after use.
+		b, err = file.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, but received false")
 		_ = file.Close(ctx)
 	}
 }
@@ -97,11 +101,19 @@ func (suite *FileTestSuite) TestStoreAndRetrieve() {
 		file := NewFile(loc, suite.log)
 		_, err := file.Connect(ctx)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-		err = file.Store(k, v)
+		err = file.Store(ctx, k, v)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-		val, err := file.Retrieve(k)
+		val, err := file.Retrieve(ctx, k)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Require().Equalf(v, val, "expected %s, but got %s\n", v, val)
+		// just for appropriateness. the same principle applies to actual databases too. clean after use.
+		b, err := file.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, but received false")
+		// just for appropriateness. the same principle applies to actual databases too. clean after use.
+		b, err = file.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, but received false")
 		_ = file.Close(ctx)
 		i++
 	}
@@ -118,13 +130,17 @@ func (suite *FileTestSuite) TestRetrieveAll() {
 	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 	for k, v := range suite.tableStoreRetrieve {
 		fmt.Printf(Order, i)
-		err = file.Store(k, v)
+		err = file.Store(ctx, k, v)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		i++
 	}
-	valMap, err := file.RetrieveAll()
+	valMap, err := file.RetrieveAll(ctx)
 	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 	suite.Require().Equalf(len(suite.tableStoreRetrieve), len(valMap), "expected %d, but got %d\n", len(suite.tableStoreRetrieve), len(valMap))
+	// just for appropriateness. the same principle applies to actual databases too. clean after use.
+	b, err := file.Flush(ctx)
+	suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+	suite.Require().True(b, "expected true, but received false")
 	_ = file.Close(ctx)
 }
 
@@ -138,19 +154,23 @@ func (suite *FileTestSuite) TestDelete() {
 	_, err := file.Connect(ctx)
 	for k, v := range suite.tableStoreRetrieve {
 		fmt.Printf(Order, i)
-		err = file.Store(k, v)
+		err = file.Store(ctx, k, v)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		// id should exist, and value should equal v
-		val, err := file.Retrieve(k)
+		val, err := file.Retrieve(ctx, k)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Assert().Equalf(v, val, "expected %s, but got %v\n", v, val)
-		b, err := file.Delete(k)
+		b, err := file.Delete(ctx, k)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Require().True(b, "expected %v, got %v\n", true, b)
 		// id should exist, and value should equal v
-		val, err = file.Retrieve(k)
+		val, err = file.Retrieve(ctx, k)
 		suite.Require().Contains(err.Error(), "doesn't exist", "expected id to not exist, but got this %v\n", err.Error())
 		suite.Require().Equalf("", val, "expected %s, but got %v\n", v, val)
+		// just for appropriateness. the same principle applies to actual databases too. clean after use.
+		b, err = file.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, but received false")
 		i++
 	}
 	_ = file.Close(ctx)
@@ -166,19 +186,23 @@ func (suite *FileTestSuite) TestPatch() {
 	_, err := file.Connect(ctx)
 	for k, v := range suite.tableStoreRetrieve {
 		fmt.Printf(Order, i)
-		err = file.Store(k, v)
+		err = file.Store(ctx, k, v)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		// id should exist, and value should equal v
-		val, err := file.Retrieve(k)
+		val, err := file.Retrieve(ctx, k)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Assert().Equalf(v, val, "expected %s, but got %v\n", v, val)
-		b, err := file.Patch(k, varTablePatch[k])
+		b, err := file.Patch(ctx, k, varTablePatch[k])
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		suite.Require().True(b, "expected %v, got %v\n", true, b)
 		// retrieve and check that the value at ID matches the patch map, and not the original
-		val, err = file.Retrieve(k)
+		val, err = file.Retrieve(ctx, k)
 		suite.Require().Equalf(varTablePatch[k], val, "expected %s, got %s %v\n", varTablePatch[k], val)
 		suite.Require().NotEqualf(v, val, "%s remains the dame and wasn't patched\n", val)
+		// just for appropriateness. the same principle applies to actual databases too. clean after use.
+		b, err = file.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, but received false")
 		i++
 	}
 	_ = file.Close(ctx)
@@ -187,7 +211,6 @@ func (suite *FileTestSuite) TestPatch() {
 func (suite *FileTestSuite) TearDownTest() {
 	_ = context.Background()
 	log := suite.log.Logger()
-	//_ = suite.file.Close(ctx)
 	for i := 0; i < len(suite.locs); i++ {
 		if err := os.RemoveAll(suite.locs[i]); err != nil {
 			log.Info().Msgf("encountered error while removing test artifacts %s: %s\n", suite.locs[i], err.Error())

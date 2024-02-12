@@ -79,7 +79,7 @@ func (f *File) Close(ctx context.Context) error {
 }
 
 // Store persists a new key-value entry in the file store
-func (f *File) Store(id string, token any) error {
+func (f *File) Store(ctx context.Context, id string, token any) error {
 	log := f.logger.Logger()
 	var err error
 
@@ -147,7 +147,7 @@ func (f *File) read() ([]byte, error) {
 }
 
 // Retrieve retrieves a token from the store identified by id
-func (f *File) Retrieve(id string) (string, error) {
+func (f *File) Retrieve(ctx context.Context, id string) (string, error) {
 	log := f.logger.Logger()
 	var ok bool
 
@@ -185,7 +185,7 @@ func (f *File) Retrieve(id string) (string, error) {
 }
 
 // RetrieveAll retrieves all the tokens from the store
-func (f *File) RetrieveAll() (map[string]string, error) {
+func (f *File) RetrieveAll(ctx context.Context) (map[string]string, error) {
 	log := f.logger.Logger()
 
 	// read current contents of the file
@@ -214,7 +214,7 @@ func (f *File) RetrieveAll() (map[string]string, error) {
 }
 
 // Delete removes a token from the file store
-func (f *File) Delete(id string) (bool, error) {
+func (f *File) Delete(ctx context.Context, id string) (bool, error) {
 	log := f.logger.Logger()
 
 	// read current contents of the file
@@ -254,7 +254,7 @@ func (f *File) Delete(id string) (bool, error) {
 }
 
 // Patch only updates a token in the file store, identified by id
-func (f *File) Patch(id string, token any) (bool, error) {
+func (f *File) Patch(ctx context.Context, id string, token any) (bool, error) {
 	log := f.logger.Logger()
 
 	// read current contents of the file
@@ -306,6 +306,15 @@ func (f *File) Patch(id string, token any) (bool, error) {
 		return false, fmt.Errorf("error while writing map to file store")
 	}
 
+	return true, nil
+}
+
+// Flush cleans al the data from a file store
+func (f *File) Flush(ctx context.Context) (bool, error) {
+	err := f.fd.Truncate(0)
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
