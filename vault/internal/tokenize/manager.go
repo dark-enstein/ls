@@ -90,7 +90,7 @@ func (m *Manager) GenerateCipher() error {
 func (m *Manager) GetTokenByID(ctx context.Context, id string) (*model.Tokenize, error) {
 	log := m.log.Logger()
 	var tokenStr string
-	// pass a range func over the contents of the store and get the contents
+
 	if val, err := m.store.Retrieve(ctx, id); err != nil {
 		return nil, fmt.Errorf(ErrKeyDoesNotExists, id)
 	} else {
@@ -162,9 +162,9 @@ type ValidateResponse struct {
 }
 
 // Validate is the high level api for validating all the user provided data
-func (m *Manager) Validate(ctx context.Context, token *model.Tokenize) ([]*ValidateResponse, bool) {
+func (m *Manager) Validate(ctx context.Context, token *model.Tokenize, patch bool) ([]*ValidateResponse, bool) {
 	keysValidationResp, ok := m.ValidateKeys(ctx, token)
-	if !ok {
+	if !ok && !patch {
 		m.log.Logger().Error().Msgf("error while validating keys")
 		return keysValidationResp, ok
 	}
@@ -197,7 +197,7 @@ func keysIsPresent(ctx context.Context, key string, tempStore map[string]bool, s
 		return ErrDuplicateKeys
 	}
 	if _, err := store.Retrieve(ctx, key); err == nil {
-		return err
+		return ErrKeyAlreadyExists
 	}
 
 	tempStore[key] = true
@@ -235,8 +235,8 @@ func (m *Manager) Detokenize(ctx context.Context, key, token string) (bool, stri
 
 	// check if the stored token match the provided token. abort if no match
 	if storedToken != token {
-		m.log.Logger().Error().Msgf("provided token does not match stored token. provided token: %s\n", token)
-		return false, "", err
+		m.log.Logger().Error().Msgf("provided token does not match stored token. provided token: %s\n", store.Redact(token))
+		return false, "", fmt.Errorf("provided token does not match stored token. provided token: %s\n", store.Redact(token))
 	}
 
 	// detokenize
@@ -276,6 +276,40 @@ func genAlphaNumericString(n int) string {
 	}
 
 	return *(*string)(unsafe.Pointer(&b))
+}
+
+// DeleteTokenByID deletes the token from the store identified by ID
+func (m *Manager) DeleteTokenByID(ctx context.Context, id string) (bool, error) {
+	log := m.log.Logger()
+
+	if b, err := m.store.Delete(ctx, id); err != nil || !b {
+		return false, fmt.Errorf(ErrKeyDoesNotExists, id)
+	}
+
+	log.Debug().Msg("successfully deleted ID from store")
+
+	log.Debug().Msg("found token in store")
+	return true, nil
+}
+
+// PatchTokenByID updates a token in the store identified by ID
+func (m *Manager) PatchTokenByID(ctx context.Context, key, val string) (string, error) {
+	log := m.log.Logger()
+
+	// tokenize
+	token, err := tokenize(val, m.cipher)
+	if err != nil {
+		m.log.Logger().Error().Msgf("error occurred while generating token: %s\n", err.Error())
+		return "", err
+	}
+
+	// patch token entry
+	if b, err := m.store.Patch(ctx, key, token.token); err != nil || !b {
+		return "", fmt.Errorf("error patching token: %s\n", err.Error())
+	}
+
+	log.Debug().Msg("successfully patched ID from store")
+	return token.String(), nil
 }
 
 // IsErrKeyAlreadyExist enables easy checking of error

@@ -43,6 +43,7 @@ func New(ctx context.Context, log *vlog.Logger) *Service {
 	}
 
 	store, err := store.NewRedis(store.DefaultRedisConnectionString, log)
+	//store := store.NewFile("./gamma", log)
 	if err != nil {
 		log.Logger().Debug().Msgf("could not initialize redis backend: error: %s\n", err.Error())
 	}
