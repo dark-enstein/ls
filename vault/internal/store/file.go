@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
@@ -35,33 +34,13 @@ func NewFile(loc string, logger *vlog.Logger) *File {
 
 // Connect attempts to open a filestream to the file at location loc
 func (f *File) Connect(ctx context.Context) (bool, error) {
-	var abs string
 	var err error
 	log := f.logger.Logger()
 	loc := f.loc
 
-	// some sanity check
-	if loc[0] != '/' {
-		abs, err = filepath.Abs(loc)
-		if err != nil {
-			log.Error().Msgf("cannot obtain absolute path to referenced path: %s\n", err.Error())
-			return false, fmt.Errorf("cannot obtain absolute path to referenced path: %s\n", err.Error())
-		}
-	}
-
-	// confirm dir of path exists
-	dir := filepath.Dir(abs)
-	if _, err = os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			log.Info().Msgf("base dir %s does not exist, creating it\n", dir)
-			err := os.MkdirAll(dir, 0777)
-			if err != nil {
-				log.Info().Msgf("error while creating base dir %s: %s\n", dir, err.Error())
-				return false, err
-			}
-		} else {
-			return false, err
-		}
+	err = IsValidFile(loc, log)
+	if err != nil {
+		return false, err
 	}
 
 	// create file database

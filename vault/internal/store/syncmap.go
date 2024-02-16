@@ -152,3 +152,8 @@ func (m *Map) IsExist(key string) bool {
 	_, ok := m.scaffold.Load(key)
 	return ok
 }
+
+// Map returns the pointer to the inner syncMap structure for external extendability within the store package
+func (m *Map) Map() *sync.Map {
+	return m.scaffold
+}
