@@ -138,6 +138,7 @@ func (suite *GobTestSuite) TestMapDump() {
 		// dump in-memory store
 		err = gob.MapDump(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		gob.Close(ctx)
 
 		// save current sync map in variable
 		old := gob.basin.Map()
@@ -147,7 +148,9 @@ func (suite *GobTestSuite) TestMapDump() {
 		//suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		//suite.Assert().True(b, "expected true, got false")
 
-		err = gob.MapRefresh(ctx)
+		gob2, _ := NewGob(ctx, loc, suite.log)
+
+		err = gob2.MapRefresh(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		newM, err := gob.basin.RetrieveAll(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)

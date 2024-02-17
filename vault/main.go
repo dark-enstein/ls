@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/gob"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/dark-enstein/vault/service"
 	"github.com/spf13/pflag"
@@ -9,6 +10,10 @@ import (
 
 type InitConfig struct {
 	debug bool
+}
+
+func init() {
+	gob.Register(map[string]string{})
 }
 
 func main() {

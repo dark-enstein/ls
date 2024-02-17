@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/gob"
 	"fmt"
@@ -33,7 +34,7 @@ func NewGob(ctx context.Context, loc string, logger *vlog.Logger) (*Gob, error) 
 	}
 
 	// open file
-	fd, err := os.Create(loc)
+	fd, err := os.OpenFile(loc, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		log.Info().Msgf("error while creating file at location %s: %s\n", loc, err.Error())
 		return nil, err
@@ -232,14 +233,23 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 	g.RLock()
 	defer g.RUnlock()
 
+	fBytes := []byte{}
+	g.fd.Read(fBytes)
+
+	fBuffer := bytes.Buffer{}
+	_, err := fBuffer.Read(fBytes)
+	if err != nil {
+		return err
+	}
+
 	// set up gob decoder with file descriptor to gob persistent store
 	dec := gob.NewDecoder(g.fd)
 
 	// encode map and write to io.Writer
-	err := dec.Decode(&m)
-	if err != io.EOF && err != nil {
-		log.Error().Msgf("error while encoding into map from gob persistent storage: error: %s\n", err.Error())
-		return fmt.Errorf("error while encoding into map from gob persistent storage: error: %s\n", err.Error())
+	err = dec.Decode(&m)
+	if err != io.EOF || err != nil {
+		log.Error().Msgf("error while decoding into map from gob persistent storage: error: %s\n", err.Error())
+		return fmt.Errorf("error while encoddecodinging into map from gob persistent storage: error: %s\n", err.Error())
 	}
 
 	// first empty sync map
@@ -261,13 +271,18 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 
 // MapDump persists the current in-memory data to the persistent store
 func (g *Gob) MapDump(ctx context.Context) error {
+	log := g.logger.Logger()
+
+	//gob.Register(map[string]string{})
 
 	g.Lock()
 	defer g.Unlock()
+	buf := bytes.Buffer{}
 	// sets up a temporary store for
 	var m = map[string]string{}
 	// set up gob encoder with file descriptor to gob persistent store
-	dec := gob.NewEncoder(g.fd)
+	dec := gob.NewEncoder(&buf)
+	//dec := gob.NewEncoder(g.fd)
 
 	// store all the sync map contents into the temporary map
 	g.basin.scaffold.Range(func(id, value interface{}) bool {
@@ -277,11 +292,41 @@ func (g *Gob) MapDump(ctx context.Context) error {
 	log.Debug().Msg("successfully ranged over sync.Map store")
 
 	// encode map and write to io.Writer || fd
-	err := dec.Encode(&m)
+	err := dec.Encode(m)
 	if err != nil {
-		log.Error().Msgf("error while encoding into map from gob persistent storage: error: %s\n", err.Error())
+		log.Error().Msgf("error while encoding into map into gob persistent storage: error: %s\n", err.Error())
 		return err
 	}
+
+	// print file
+	//b, _ := os.ReadFile(g.loc)
+	fmt.Printf("just saved file: \n%s\n", buf.Bytes())
+
+	// print map from buf
+	mapEcho := map[string]string{}
+	gee := gob.NewDecoder(&buf)
+	err = gee.Decode(&mapEcho)
+	if err != nil {
+		fmt.Printf("error reading map: %s\n", err.Error())
+		return err
+	}
+
+	log.Info().Msgf("decoded map from buf: %#v\n", mapEcho)
+
+	//save to file
+	g.fd.Write(buf.Bytes())
+
+	// print map from file
+	mapEchom := map[string]string{}
+	geep := gob.NewDecoder(g.fd)
+	err = geep.Decode(&mapEchom)
+	if err != nil {
+		fmt.Printf("error reading map: %s\n", err.Error())
+		return err
+	}
+
+	log.Info().Msgf("decoded map from buf: %#v\n", mapEchom)
+
 	log.Info().Msg("successfully persisted in-memory map to disk")
 
 	return nil
