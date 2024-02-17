@@ -141,22 +141,18 @@ func (suite *GobTestSuite) TestMapDump() {
 		gob.Close(ctx)
 
 		// save current sync map in variable
-		old := gob.basin.Map()
-
-		// flush and then fetch the map in storage
-		//b, err = gob.Flush(ctx)
-		//suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-		//suite.Assert().True(b, "expected true, got false")
+		old_cache := gob.basin.Map()
 
 		gob2, _ := NewGob(ctx, loc, suite.log)
 
 		err = gob2.MapRefresh(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		new_cache := gob.basin.Map()
 		newM, err := gob.basin.RetrieveAll(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 
 		suite.Require().Equalf(currentMap, newM, "expected %v (current iter in map), but got %v (map read)\n", currentMap, newM)
-		suite.Require().Equalf(old, newM, "expected %v (map dumped), but got %v (map read)\n", currentMap, newM)
+		suite.Require().Equalf(old_cache, new_cache, "expected %v (map dumped), but got %v (map read)\n", currentMap, newM)
 	}
 }
 

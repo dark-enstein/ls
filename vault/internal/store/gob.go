@@ -1,13 +1,11 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"encoding/gob"
 	"fmt"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/rs/zerolog/log"
-	"io"
 	"os"
 	"sync"
 )
@@ -233,21 +231,21 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 	g.RLock()
 	defer g.RUnlock()
 
-	fBytes := []byte{}
-	g.fd.Read(fBytes)
-
-	fBuffer := bytes.Buffer{}
-	_, err := fBuffer.Read(fBytes)
-	if err != nil {
-		return err
-	}
+	//fBytes := []byte{}
+	//g.fd.Read(fBytes)
+	//
+	//fBuffer := bytes.Buffer{}
+	//_, err := fBuffer.Read(fBytes)
+	//if err != nil {
+	//	return err
+	//}
 
 	// set up gob decoder with file descriptor to gob persistent store
 	dec := gob.NewDecoder(g.fd)
 
 	// encode map and write to io.Writer
-	err = dec.Decode(&m)
-	if err != io.EOF || err != nil {
+	err := dec.Decode(&m)
+	if err != nil {
 		log.Error().Msgf("error while decoding into map from gob persistent storage: error: %s\n", err.Error())
 		return fmt.Errorf("error while encoddecodinging into map from gob persistent storage: error: %s\n", err.Error())
 	}
@@ -273,16 +271,11 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 func (g *Gob) MapDump(ctx context.Context) error {
 	log := g.logger.Logger()
 
-	//gob.Register(map[string]string{})
-
 	g.Lock()
 	defer g.Unlock()
-	buf := bytes.Buffer{}
-	// sets up a temporary store for
+
 	var m = map[string]string{}
-	// set up gob encoder with file descriptor to gob persistent store
-	dec := gob.NewEncoder(&buf)
-	//dec := gob.NewEncoder(g.fd)
+	dec := gob.NewEncoder(g.fd)
 
 	// store all the sync map contents into the temporary map
 	g.basin.scaffold.Range(func(id, value interface{}) bool {
@@ -298,34 +291,12 @@ func (g *Gob) MapDump(ctx context.Context) error {
 		return err
 	}
 
-	// print file
-	//b, _ := os.ReadFile(g.loc)
-	fmt.Printf("just saved file: \n%s\n", buf.Bytes())
-
-	// print map from buf
-	mapEcho := map[string]string{}
-	gee := gob.NewDecoder(&buf)
-	err = gee.Decode(&mapEcho)
+	// update internal file descriptor TODO: move this to a separate function later
+	g.fd, err = os.OpenFile(g.fd.Name(), os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		fmt.Printf("error reading map: %s\n", err.Error())
 		return err
 	}
-
-	log.Info().Msgf("decoded map from buf: %#v\n", mapEcho)
-
-	//save to file
-	g.fd.Write(buf.Bytes())
-
-	// print map from file
-	mapEchom := map[string]string{}
-	geep := gob.NewDecoder(g.fd)
-	err = geep.Decode(&mapEchom)
-	if err != nil {
-		fmt.Printf("error reading map: %s\n", err.Error())
-		return err
-	}
-
-	log.Info().Msgf("decoded map from buf: %#v\n", mapEchom)
 
 	log.Info().Msg("successfully persisted in-memory map to disk")
 
