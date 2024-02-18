@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/stretchr/testify/suite"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -81,9 +82,6 @@ var (
 )
 
 func (suite *GobTestSuite) SetupTest() {
-	//port := "6378"
-	//err := SetUpEnv(port)
-	//suite.Require().NoErrorf(err, "docker environment setup failed with error: %s\n", err.Error())
 	suite.tableConnect = varTableGobConnect
 	suite.tableStoreRetrieve = varTableStoreGobRetrieve
 	suite.tableStorePatch = varTableGobPatch
@@ -279,70 +277,96 @@ func (suite *GobTestSuite) TestRetrieveAll() {
 	}
 }
 
-//
-//func (suite *GobTestSuite) TestDelete() {
-//	_ = suite.log.Logger()
-//	ctx := context.Background()
-//	i := 1
-//	redis, err := NewRedis(suite.redisConnectionString, suite.log)
-//	b, err := redis.Connect(ctx)
-//	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//	suite.Assert().True(b, "expected true but got false")
-//	for k, v := range suite.tableStoreRetrieve {
-//		fmt.Printf(Order, i)
-//		err = redis.Store(ctx, k, v)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		// id should exist, and value should equal v
-//		val, err := redis.Retrieve(ctx, k)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Assert().Equalf(v, val, "expected %s, but got %v\n", v, val)
-//		b, err := redis.Delete(ctx, k)
-//		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Require().True(b, "expected %v, got %v\n", true, b)
-//		// id should exist, and value should equal v
-//		val, err = redis.Retrieve(ctx, k)
-//		suite.Require().Error(err, "expected id to not exist, but got this %v\n", err.Error())
-//		suite.Require().Equalf("", val, "expected %s, but got %v\n", v, val)
-//		// ensure DB is flushed
-//		suite.flush(ctx, redis)
-//		i++
-//	}
-//	err = redis.Close(ctx)
-//	suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//}
-//
-//func (suite *GobTestSuite) TestPatch() {
-//	_ = suite.log.Logger()
-//	ctx := context.Background()
-//	i := 1
-//	redis, err := NewRedis(suite.redisConnectionString, suite.log)
-//	b, err := redis.Connect(ctx)
-//	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//	suite.Assert().True(b, "expected true but got false")
-//	for k, v := range suite.tableStorePatch {
-//		fmt.Printf(Order, i)
-//		err = redis.Store(ctx, k, v)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		// id should exist, and value should equal v
-//		val, err := redis.Retrieve(ctx, k)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Assert().Equalf(v, val, "expected %s, but got %v\n", v, val)
-//		b, err := redis.Patch(ctx, k, v)
-//		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Require().True(b, "expected %v, got %v\n", true, b)
-//		// id should exist, and value should equal v
-//		val, err = redis.Retrieve(ctx, k)
-//		suite.Require().NoErrorf(err, ErrWithOperation, "expected id to not exist, but got this %v\n", err)
-//		suite.Require().Equalf(v, val, "expected %s, but got %v\n", v, val)
-//		// ensure DB is flushed
-//		suite.flush(ctx, redis)
-//		i++
-//	}
-//	err = redis.Close(ctx)
-//	suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//}
+func (suite *GobTestSuite) TestDelete() {
+	_ = suite.log.Logger()
+	ctx := context.Background()
+	loc := suite.tableConnect[0].loc
+	for i := 0; i < len(suite.mapbucket); i++ {
+		fmt.Printf(Order, i+1)
+		currentMap := suite.mapbucket[i]
+		gob, err := NewGob(ctx, loc, suite.log, true)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		b, err := gob.Connect(ctx)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Assert().True(b, "expected true, got false")
 
-func (suite *GobTestSuite) TearDownTest() {}
+		var allKeys = []string{}
+
+		// store map into in-memory store
+		for k, v := range currentMap {
+			fmt.Printf("storing: k: %s, v: %s\n", k, v)
+			allKeys = append(allKeys, k)
+			err := gob.Store(ctx, k, v)
+			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		}
+
+		// delete specific key from memory
+		var keyToDelete = allKeys[4]
+		b, err = gob.Delete(ctx, keyToDelete)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, got false")
+
+		// confirm that key is in indeed deleted by trying to retrieve
+		val, err := gob.Retrieve(ctx, keyToDelete)
+		// expect error
+		suite.Require().Error(err, "expected no errors, but got this %v\n", err)
+		// expect error string to be of key doesn't exist
+		//suite.Require().Contains(err, "key doesn't exist", "expected no errors, but got this %v\n", err.Error())
+		// expect key to be empty
+		suite.Require().Equalf("", val, "expected key to deleted, but got %s\n", val)
+
+		suite.flush(ctx, gob)
+	}
+}
+
+func (suite *GobTestSuite) TestPatch() {
+	_ = suite.log.Logger()
+	ctx := context.Background()
+	loc := suite.tableConnect[0].loc
+	for i := 0; i < len(suite.mapbucket); i++ {
+		fmt.Printf(Order, i+1)
+		currentMap := suite.mapbucket[i]
+		gob, err := NewGob(ctx, loc, suite.log, true)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		b, err := gob.Connect(ctx)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Assert().True(b, "expected true, got false")
+
+		var allKeys = []string{}
+		var patchValue = "iuudikldwjkd"
+
+		// store map into in-memory store
+		for k, v := range currentMap {
+			fmt.Printf("storing: k: %s, v: %s\n", k, v)
+			allKeys = append(allKeys, k)
+			err := gob.Store(ctx, k, v)
+			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		}
+
+		// delete specific key from memory
+		var keyToDelete = allKeys[4]
+		b, err = gob.Patch(ctx, keyToDelete, patchValue)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().True(b, "expected true, got false")
+
+		// confirm that key is in indeed patched by trying to retrieve
+		val, err := gob.Retrieve(ctx, keyToDelete)
+		// expect error
+		suite.Require().NoError(err, "expected no errors, but got this %v\n", err)
+		// expect key to be empty
+		suite.Require().Equalf(patchValue, val, "expected key to deleted, but got %s\n", val)
+
+		suite.flush(ctx, gob)
+	}
+}
+
+func (suite *GobTestSuite) TearDownSuite() {
+	for i := 0; i < len(suite.tableConnect); i++ {
+		err := os.RemoveAll(suite.tableConnect[i].loc)
+		suite.Require().NoErrorf(err, "got error while trying to clean tests: %v\n", err) // keeps trying to access invalid mem address
+	}
+
+}
 
 // TestRedisSuite tests the Redis suite
 func TestGobSuite(t *testing.T) {

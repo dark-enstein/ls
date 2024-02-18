@@ -62,8 +62,8 @@ func (m *Map) Retrieve(ctx context.Context, id string) (string, error) {
 	// first check if key already exists
 	val, ok := m.scaffold.Load(id)
 	if !ok {
-		log.Debug().Msgf("error occurred while retrieving value from store using key id: %s\n", id)
-		return "", fmt.Errorf("error occured while retrieving value from store using key id: %s\n", id)
+		log.Debug().Msgf("error occurred while retrieving value from store using key id: %s: key doesn't exist\n", id)
+		return "", fmt.Errorf("error occured while retrieving value from store using key id: %s: key doesn't exist\n", id)
 	}
 
 	// ensyre that returned value is string
