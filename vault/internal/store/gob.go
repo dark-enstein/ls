@@ -85,6 +85,7 @@ func (g *Gob) Store(ctx context.Context, id string, token any) error {
 
 	// TODO: revisit this later: ?do we go for refreshing before every write, or ensuring not to clear the in-memory cache after successive writes?
 	// I think its more idempotent and repeatable to clear the cache after every write, regardless of if it is manywrites or onewrite. A seperate implementation for writemany could factor this optimization in mind.
+	// Potentially move this out from Store, into a pipeline function? So its order can be interspersed with additional logic. I don't think its atomic.
 	b, err := g.basin.Flush(ctx)
 	if !b || err != nil {
 		return err
@@ -143,16 +144,18 @@ func (g *Gob) Retrieve(ctx context.Context, id string) (string, error) {
 	return value, nil
 }
 
+// RetrieveAll
 func (g *Gob) RetrieveAll(ctx context.Context) (map[string]string, error) {
 	log := g.logger.Logger()
 
 	// first refresh in-memory map
-	//err := g.MapRefresh(ctx)
-	//if err != nil {
-	//	log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
-	//	return nil, err
-	//}
+	err := g.MapRefresh(ctx)
+	if err != nil {
+		log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
+		return nil, err
+	}
 
+	// then retrieve in-memory: opportunities for optimization here
 	m, err := g.basin.RetrieveAll(ctx)
 	if err != nil {
 		log.Debug().Msgf("error while retrieving all entries: %s\n", err.Error())
@@ -338,6 +341,7 @@ func (g *Gob) fileRefresh() error {
 }
 
 // Flush empties the internal sync.Map and the persistent gob store // TODO: why? What is the use case for this?
+// TODO: Flush should rather persist the current state of the in-memory map into disk, and then empty the in-memory map. It isn't idiomatic for flush to clear the persistent store too.
 func (g *Gob) Flush(ctx context.Context) (bool, error) {
 	log := g.logger.Logger()
 

@@ -174,73 +174,111 @@ func (suite *GobTestSuite) TestMapRefresh() {
 			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		}
 
-		// dump in-memory store
-		err = gob.MapDump(ctx)
+		// store flushes the in-memory store at the end of every Store op, so no need to explicitly define a flush, but we can redefine for readability
+		b, err = gob.basin.Flush(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-		//gob.Close(ctx)
+		suite.Assert().True(b, "expected true, got false")
 
-		gob.basin.Flush(ctx)
+		// confirm that in-memory store is empty by retrieving from in-memory store
+		var emptyInMemoryLen = 0
+		newM, err := gob.basin.RetrieveAll(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().Equalf(emptyInMemoryLen, len(newM), "expected in-memory store to be empty after flushing but contains some value")
 
+		// refresh functionality
 		err = gob.MapRefresh(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-		//new_cache := gob.basin.Map()
-		newM, err := gob.RetrieveAll(ctx)
+
+		newM, err = gob.RetrieveAll(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 
+		// confirm that new map from refresh matches the original map initially persisted to disk
 		suite.Require().Equalf(currentMap, newM, "expected %v (current iter in map), but got %v (map read)\n", currentMap, newM)
+		// TODO: compare the old and the new in-memory store
 		//suite.Require().Equalf(old_cache, new_cache, "expected %v (map dumped), but got %v (map read)\n", currentMap, newM)
 
 		suite.flush(ctx, gob)
 	}
 }
 
-//func (suite *GobTestSuite) TestStoreAndRetrieve() {
-//	_ = suite.log.Logger()
-//	ctx := context.Background()
-//	i := 1
-//	for k, v := range suite.tableStoreRetrieve {
-//		fmt.Printf(Order, i)
-//		redis, err := NewRedis(suite.loc, suite.log)
-//		b, err := redis.Connect(ctx)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Assert().True(b, "expected true but got false")
-//		err = redis.Store(ctx, k, v)
-//		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		time.Sleep(2)
-//		val, err := redis.Retrieve(ctx, k)
-//		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		suite.Require().Equalf(v, val, "expected %s, but got %s\n", v, val)
-//		// clean DB
-//		suite.flush(ctx, redis)
-//		err = redis.Close(ctx)
-//		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		i++
-//	}
-//}
-//
-//func (suite *GobTestSuite) TestRetrieveAll() {
-//	_ = suite.log.Logger()
-//	ctx := context.Background()
-//	i := 1
-//	redis, err := NewRedis(suite.redisConnectionString, suite.log)
-//	b, err := redis.Connect(ctx)
-//	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//	suite.Assert().True(b, "expected true but got false")
-//	for k, v := range suite.tableStoreRetrieve {
-//		fmt.Printf(Order, i)
-//		err = redis.Store(ctx, k, v)
-//		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//		i++
-//	}
-//	valMap, err := redis.RetrieveAll(ctx)
-//	suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//	suite.Require().Equalf(len(suite.tableStoreRetrieve), len(valMap), "expected %d, but got %d\n", len(suite.tableStoreRetrieve), len(valMap))
-//	// clean DB
-//	suite.flush(ctx, redis)
-//	err = redis.Close(ctx)
-//	suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//}
+func (suite *GobTestSuite) TestStoreAndRetrieve() {
+	_ = suite.log.Logger()
+	ctx := context.Background()
+	loc := suite.tableConnect[0].loc
+	for i := 0; i < len(suite.mapbucket); i++ {
+		fmt.Printf(Order, i+1)
+		currentMap := suite.mapbucket[i]
+		gob, err := NewGob(ctx, loc, suite.log, true)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		b, err := gob.Connect(ctx)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Assert().True(b, "expected true, got false")
+
+		var allKeys = []string{}
+
+		// store map into in-memory store
+		for k, v := range currentMap {
+			fmt.Printf("storing: k: %s, v: %s\n", k, v)
+			allKeys = append(allKeys, k)
+			err := gob.Store(ctx, k, v)
+			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		}
+
+		// confirm that in-memory store is empty
+		var emptyInMemoryLen = 0
+		newM, err := gob.basin.RetrieveAll(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().Equalf(emptyInMemoryLen, len(newM), "expected in-memory store to be empty after flushing but contains some value")
+
+		// refresh in-memory store and retrieve
+		var checkKey = allKeys[8]
+		val, err := gob.Retrieve(ctx, checkKey)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().Equalf(currentMap[checkKey], val, "expected %s, but got %s\n", currentMap[checkKey], val)
+
+		suite.flush(ctx, gob)
+	}
+}
+
+func (suite *GobTestSuite) TestRetrieveAll() {
+	_ = suite.log.Logger()
+	ctx := context.Background()
+	loc := suite.tableConnect[0].loc
+	for i := 0; i < len(suite.mapbucket); i++ {
+		fmt.Printf(Order, i+1)
+		currentMap := suite.mapbucket[i]
+		gob, err := NewGob(ctx, loc, suite.log, true)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		b, err := gob.Connect(ctx)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Assert().True(b, "expected true, got false")
+
+		// store map into in-memory store
+		for k, v := range currentMap {
+			fmt.Printf("storing: k: %s, v: %s\n", k, v)
+			err := gob.Store(ctx, k, v)
+			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		}
+
+		// confirm that in-memory store is empty
+		var emptyInMemoryLen = 0
+		newM, err := gob.basin.RetrieveAll(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Require().Equalf(emptyInMemoryLen, len(newM), "expected in-memory store to be empty after flushing but contains some value")
+
+		// refresh in-memory store and retrieve
+		newM, err = gob.RetrieveAll(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+
+		// confirm that new map from refresh matches the original map initially persisted to disk
+		suite.Require().Equalf(currentMap, newM, "expected %v (current iter in map), but got %v (map read)\n", currentMap, newM)
+		// TODO: compare the old and the new in-memory store
+		//suite.Require().Equalf(old_cache, new_cache, "expected %v (map dumped), but got %v (map read)\n", currentMap, newM)
+
+		suite.flush(ctx, gob)
+	}
+}
+
 //
 //func (suite *GobTestSuite) TestDelete() {
 //	_ = suite.log.Logger()
