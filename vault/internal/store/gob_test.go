@@ -99,7 +99,7 @@ func (suite *GobTestSuite) TestConnect() {
 	for i := 0; i < len(suite.tableConnect); i++ {
 		fmt.Printf(Order, i+1)
 		loc := suite.tableConnect[i].loc
-		gob, err := NewGob(ctx, loc, suite.log)
+		gob, err := NewGob(ctx, loc, suite.log, true)
 		// decided not to require no errors here, because the core error handling logic is handled by go=redis, so no use we trying to test it
 		//suite.Assert().NoErrorf(err, "got error: %v\n", err)
 		// continue even with error
@@ -121,7 +121,7 @@ func (suite *GobTestSuite) TestMapDump() {
 	for i := 0; i < len(suite.mapbucket); i++ {
 		fmt.Printf(Order, i+1)
 		currentMap := suite.mapbucket[i]
-		gob, err := NewGob(ctx, loc, suite.log)
+		gob, err := NewGob(ctx, loc, suite.log, true)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		b, err := gob.Connect(ctx)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
@@ -141,7 +141,7 @@ func (suite *GobTestSuite) TestMapDump() {
 		// save current sync map in variable
 		old_cache := gob.basin.Map()
 
-		gob2, _ := NewGob(ctx, loc, suite.log)
+		gob2, _ := NewGob(ctx, loc, suite.log, true)
 
 		err = gob2.MapRefresh(ctx)
 		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
@@ -161,7 +161,7 @@ func (suite *GobTestSuite) TestMapRefresh() {
 	for i := 0; i < len(suite.mapbucket); i++ {
 		fmt.Printf(Order, i+1)
 		currentMap := suite.mapbucket[i]
-		gob, err := NewGob(ctx, loc, suite.log)
+		gob, err := NewGob(ctx, loc, suite.log, true)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
 		b, err := gob.Connect(ctx)
 		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)

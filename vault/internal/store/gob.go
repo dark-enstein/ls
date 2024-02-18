@@ -22,7 +22,8 @@ type Gob struct {
 	sync.RWMutex
 }
 
-func NewGob(ctx context.Context, loc string, logger *vlog.Logger) (*Gob, error) {
+func NewGob(ctx context.Context, loc string, logger *vlog.Logger, trunc bool) (*Gob, error) {
+	// switch trunc to using functonal options
 	log := logger.Logger()
 
 	// gob encode
@@ -38,6 +39,15 @@ func NewGob(ctx context.Context, loc string, logger *vlog.Logger) (*Gob, error) 
 		log.Info().Msgf("error while creating file at location %s: %s\n", loc, err.Error())
 		return nil, err
 	}
+
+	if trunc {
+		// truncate the file to zero
+		err := fd.Truncate(0)
+		if err != nil {
+			log.Info().Msgf("could not truncate existing gob store %s: %s\n", loc, err.Error())
+			return nil, err
+		}
+	}
 	return &Gob{loc, NewSyncMap(ctx, logger), fd, logger, sync.RWMutex{}}, nil
 }
 
@@ -46,30 +56,38 @@ func (g *Gob) Connect(ctx context.Context) (bool, error) {
 }
 
 func (g *Gob) Store(ctx context.Context, id string, token any) error {
-	//log := g.logger.Logger()
+	log := g.logger.Logger()
 
-	// TODO: Revisit this it's best to refresh before persisting new data; just in case there has been a latest update first refresh in-memory map
-	//err := g.MapRefresh(ctx)
-	//if err != nil {
-	//	log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
-	//	return err
-	//}
+	// TODO: Revisit this it's best to refresh before persisting new data; just in case there has been a latest update first refresh in-memory map, or the in-memory map has been cleared below
+	// see below
+	err := g.MapRefresh(ctx)
+	if err != nil {
+		log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
+		return err
+	}
 
 	// store new key value pair in the in-memory store
 	// TODO: rename
-	err := g.basin.Store(ctx, id, token)
+	err = g.basin.Store(ctx, id, token)
 	if err != nil {
 		return err
 	}
 
 	// persist the in-memory store to disk
-	i, err := g.persist(ctx, false)
+	i, err := g.persist(ctx, true)
 	if err != nil {
 		return err
 	}
 
 	if i == 0 {
 		return fmt.Errorf("wrote 0 bytes to gob persistent storage")
+	}
+
+	// TODO: revisit this later: ?do we go for refreshing before every write, or ensuring not to clear the in-memory cache after successive writes?
+	// I think its more idempotent and repeatable to clear the cache after every write, regardless of if it is manywrites or onewrite. A seperate implementation for writemany could factor this optimization in mind.
+	b, err := g.basin.Flush(ctx)
+	if !b || err != nil {
+		return err
 	}
 
 	return nil
@@ -201,7 +219,7 @@ func (g *Gob) persist(ctx context.Context, replace bool) (int64, error) {
 	}
 
 	// core persist
-	// dump
+	// dump the current in-memory contents into file. TODO: return both the length of binary written for integrity checks, and any error if encountered.
 	err := g.MapDump(ctx)
 	if err != nil {
 		log.Error().Msgf("error while dumping in-memory map : error: %s\n", err.Error())
@@ -209,7 +227,7 @@ func (g *Gob) persist(ctx context.Context, replace bool) (int64, error) {
 	}
 
 	// post checks
-	// confirm bytes len written to file
+	// compare the size of the file in bytes and the size of bytes written via MapDump from above
 	f, err := g.fd.Stat()
 	if err != nil {
 		log.Error().Msgf("error retrieving file stat: error: %s\n", err.Error())
@@ -248,24 +266,27 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 	// encode map and write to io.Writer
 	err := dec.Decode(&m)
 	if err == io.EOF {
-		log.Warn().Msgf("decoding file failed with EOF: file likely empty: %s\n", err.Error())
+		log.Warn().Msgf("decoding file returned with EOF: file empty: %s\n", err.Error())
 	} else if err != nil {
 		log.Error().Msgf("error while decoding into map from gob persistent storage: error: %s\n", err.Error())
 		return fmt.Errorf("error while encoddecodinging into map from gob persistent storage: error: %s\n", err.Error())
 	}
 
-	// first empty sync map
-	// if any error is received from reading from file, the internal sync.Map isn't cleared
-	_, err = g.basin.Flush(ctx)
-	if err != nil {
-		log.Error().Msgf("error flushing in-memory store: %s\n", err.Error())
-		return fmt.Errorf("error flushing in-memory store: %s\n", err.Error())
-	}
+	// only perform a clean refresh when m map is not empty
+	if len(m) > 0 {
+		// first empty sync map
+		// if any error is received from reading from file, the internal sync.Map isn't cleared
+		_, err = g.basin.Flush(ctx)
+		if err != nil {
+			log.Error().Msgf("error flushing in-memory store: %s\n", err.Error())
+			return fmt.Errorf("error flushing in-memory store: %s\n", err.Error())
+		}
 
-	// unfurl map into sync map
-	syncM := g.basin.Map()
-	for k, v := range m {
-		syncM.Store(k, v)
+		// unfurl map into sync map
+		syncM := g.basin.Map()
+		for k, v := range m {
+			syncM.Store(k, v)
+		}
 	}
 
 	return nil
@@ -288,6 +309,9 @@ func (g *Gob) MapDump(ctx context.Context) error {
 	})
 	log.Debug().Msg("successfully ranged over sync.Map store")
 
+	// print things about to be stored, for debugging purposes
+	fmt.Println("about to persist:", m)
+
 	// encode map and write to io.Writer || fd
 	err := dec.Encode(m)
 	if err != nil {
@@ -295,15 +319,21 @@ func (g *Gob) MapDump(ctx context.Context) error {
 		return err
 	}
 
-	// update internal file descriptor TODO: move this to a separate function later
-	g.fd, err = os.OpenFile(g.fd.Name(), os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
+	// reopen file to update internal file descriptor TODO: move this to a separate function later
+	_ = g.fileRefresh()
+
+	log.Info().Msg("successfully persisted in-memory map to disk")
+
+	return nil
+}
+
+func (g *Gob) fileRefresh() error {
+	var err error
+	g.fd, err = os.OpenFile(g.fd.Name(), os.O_RDWR|os.O_APPEND, 0755)
 	if err != nil {
 		fmt.Printf("error reading map: %s\n", err.Error())
 		return err
 	}
-
-	log.Info().Msg("successfully persisted in-memory map to disk")
-
 	return nil
 }
 
