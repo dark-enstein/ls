@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/rs/zerolog/log"
+	"io"
 	"os"
 	"sync"
 )
@@ -45,17 +46,18 @@ func (g *Gob) Connect(ctx context.Context) (bool, error) {
 }
 
 func (g *Gob) Store(ctx context.Context, id string, token any) error {
-	log := g.logger.Logger()
+	//log := g.logger.Logger()
 
-	// first refresh in-memory map
-	err := g.MapRefresh(ctx)
-	if err != nil {
-		log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
-		return err
-	}
+	// TODO: Revisit this it's best to refresh before persisting new data; just in case there has been a latest update first refresh in-memory map
+	//err := g.MapRefresh(ctx)
+	//if err != nil {
+	//	log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
+	//	return err
+	//}
 
 	// store new key value pair in the in-memory store
-	err = g.basin.Store(ctx, id, token)
+	// TODO: rename
+	err := g.basin.Store(ctx, id, token)
 	if err != nil {
 		return err
 	}
@@ -127,11 +129,11 @@ func (g *Gob) RetrieveAll(ctx context.Context) (map[string]string, error) {
 	log := g.logger.Logger()
 
 	// first refresh in-memory map
-	err := g.MapRefresh(ctx)
-	if err != nil {
-		log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
-		return nil, err
-	}
+	//err := g.MapRefresh(ctx)
+	//if err != nil {
+	//	log.Error().Msgf("error while refresh gob persistent storage: error: %s\n", err.Error())
+	//	return nil, err
+	//}
 
 	m, err := g.basin.RetrieveAll(ctx)
 	if err != nil {
@@ -245,7 +247,9 @@ func (g *Gob) MapRefresh(ctx context.Context) error {
 
 	// encode map and write to io.Writer
 	err := dec.Decode(&m)
-	if err != nil {
+	if err == io.EOF {
+		log.Warn().Msgf("decoding file failed with EOF: file likely empty: %s\n", err.Error())
+	} else if err != nil {
 		log.Error().Msgf("error while decoding into map from gob persistent storage: error: %s\n", err.Error())
 		return fmt.Errorf("error while encoddecodinging into map from gob persistent storage: error: %s\n", err.Error())
 	}
@@ -303,7 +307,7 @@ func (g *Gob) MapDump(ctx context.Context) error {
 	return nil
 }
 
-// Flush empties the internal sync.Map and the persistent gob store
+// Flush empties the internal sync.Map and the persistent gob store // TODO: why? What is the use case for this?
 func (g *Gob) Flush(ctx context.Context) (bool, error) {
 	log := g.logger.Logger()
 

@@ -111,8 +111,6 @@ func (suite *GobTestSuite) TestConnect() {
 		suite.Equalf(suite.tableConnect[i].expected, b, "expected %v, got %v\n", suite.tableConnect[i].expected, b)
 		// clean DB
 		suite.flush(ctx, gob)
-		err = gob.Close(ctx)
-		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
 	}
 }
 
@@ -156,11 +154,46 @@ func (suite *GobTestSuite) TestMapDump() {
 	}
 }
 
-//func (suite *GobTestSuite) MapRefresh(ctx context.Context) {
-//	b, err := gob.MapRefresh(ctx)
-//	suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
-//	suite.Assert().True(b, "expected true, got false")
-//}
+func (suite *GobTestSuite) TestMapRefresh() {
+	_ = suite.log.Logger()
+	ctx := context.Background()
+	loc := suite.tableConnect[0].loc
+	for i := 0; i < len(suite.mapbucket); i++ {
+		fmt.Printf(Order, i+1)
+		currentMap := suite.mapbucket[i]
+		gob, err := NewGob(ctx, loc, suite.log)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		b, err := gob.Connect(ctx)
+		suite.Assert().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		suite.Assert().True(b, "expected true, got false")
+
+		// store map into in-memory store
+		for k, v := range currentMap {
+			fmt.Printf("storing: k: %s, v: %s\n", k, v)
+			err := gob.Store(ctx, k, v)
+			suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		}
+
+		// dump in-memory store
+		err = gob.MapDump(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		//gob.Close(ctx)
+
+		gob.basin.Flush(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+
+		err = gob.MapRefresh(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+		//new_cache := gob.basin.Map()
+		newM, err := gob.RetrieveAll(ctx)
+		suite.Require().NoErrorf(err, "expected no errors, but got this %v\n", err)
+
+		suite.Require().Equalf(currentMap, newM, "expected %v (current iter in map), but got %v (map read)\n", currentMap, newM)
+		//suite.Require().Equalf(old_cache, new_cache, "expected %v (map dumped), but got %v (map read)\n", currentMap, newM)
+
+		suite.flush(ctx, gob)
+	}
+}
 
 //func (suite *GobTestSuite) TestStoreAndRetrieve() {
 //	_ = suite.log.Logger()
