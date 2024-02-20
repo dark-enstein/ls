@@ -363,7 +363,7 @@ func (suite *GobTestSuite) TestPatch() {
 func (suite *GobTestSuite) TearDownSuite() {
 	for i := 0; i < len(suite.tableConnect); i++ {
 		err := os.RemoveAll(suite.tableConnect[i].loc)
-		suite.Require().NoErrorf(err, "got error while trying to clean tests: %v\n", err) // keeps trying to access invalid mem address
+		suite.Require().NoErrorf(err, "got error while trying to clean tests: %v\n", err)
 	}
 
 }

@@ -1,9 +1,0 @@
-#start vault service
-vault service run [--port <port>]
-
-#use command line tool
-vault store <id> [ --secret <sensitive value> | -- file <path to file containing secret> ] // add id and token to vault
-vault delete <id> // delete entry from vault
-vault list // list vault entries TODO: add [--scope <namespace>] sometime later
-vault peek <id> // peek the value of an entry in vault
-vault peel <id> // reveal the decrypted value of a token ID in vault
