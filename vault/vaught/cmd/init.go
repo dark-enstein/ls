@@ -76,18 +76,21 @@ Each storage option offers specific flags for customization, providing the flexi
 			ic.StoreLoc, err = filepath.Abs(fileLoc)
 			if err != nil {
 				log.Fatal().Msgf("error with path: %s\n", err)
+				return
 			}
 		case service.STORE_GOB:
 			log.Info().Msg("Using Gob storage")
 			ic.StoreLoc, err = filepath.Abs(gobLoc)
 			if err != nil {
 				log.Fatal().Msgf("error with path: %s\n", err)
+				return
 			}
 		case service.STORE_REDIS:
 			log.Info().Msg("Using Redis storage")
 			_, err = redis.ParseURL(redisConnString)
 			if err != nil {
 				log.Fatal().Msgf("error with redis string: %s\n", err)
+				return
 			}
 			ic.RedisString = redisConnString
 		case service.STORE_MAP:
@@ -95,12 +98,14 @@ Each storage option offers specific flags for customization, providing the flexi
 		}
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error while setting up service: %s", err)
+			return
 		}
 
 		// persist to disk at config loc
 		err = jsonEncode(DefaultConfigLoc, ic, logger)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error occurred while setting up cli: %s", err)
+			return
 		}
 
 		logger.Logger().Info().Msgf("Successfully set up Vault CLI. You can begin using the other commands.")
@@ -111,7 +116,6 @@ var storeStr string
 var redisConnString string
 var gobLoc string
 var fileLoc string
-var debug bool
 
 func init() {
 	initCmd.Flags().StringVarP(&storeStr, "store", "s", "file", "Specify the storage backend for the service. Options: file, gob, redis, in-memory syncmap.")
@@ -119,7 +123,6 @@ func init() {
 	initCmd.Flags().StringVarP(&gobLoc, "gobLoc", "g", DefaultGobLoc, "Specify the disk location for the gob store.")
 	initCmd.Flags().StringVarP(&fileLoc, "fileLoc", "f", DefaultStoreLoc, "Specify the disk location for the file store.")
 	//initCmd.Flags().StringVarP(&configPath, "configPath", "c", DefaultConfigLoc, "Specify the disk location for the config file.")
-	initCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable or disable debug mode.")
 }
 
 //var configPath string

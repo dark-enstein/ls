@@ -37,7 +37,7 @@ func Execute() {
 	}
 }
 
-var logLevel string
+var debug bool
 
 func init() {
 	// Here you will define your flags and configuration settings.
@@ -55,5 +55,5 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	RootCmd.Flags().StringVarP(&logLevel, "logLevel", "l", "info", "Set log level for application")
+	initCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable or disable debug mode.")
 }

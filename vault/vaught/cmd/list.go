@@ -33,21 +33,25 @@ This will output all the tokens stored, formatted as JSON for easy reading and i
 		ic, err := jsonDecode(DefaultConfigLoc, logger)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error occurred while reading config: %s", err)
+			return
 		}
 
 		manager, err := ic.Manager(ctx, logger)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error setting up manager: %s", err)
+			return
 		}
 
 		tokens, err := manager.GetAllTokens(ctx)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error retrieving tokens: %s", err)
+			return
 		}
 
 		bytesResult, err := json.Marshal(&tokens)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error marshalling tokens into json: %s", err)
+			return
 		}
 
 		fmt.Println("All Tokens:")
@@ -56,5 +60,5 @@ This will output all the tokens stored, formatted as JSON for easy reading and i
 }
 
 func init() {
-	initCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable or disable debug mode.")
+	//initCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable or disable debug mode.")
 }

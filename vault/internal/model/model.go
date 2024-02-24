@@ -21,8 +21,8 @@ type Detokenize struct {
 }
 
 type DetokenizeResponse struct {
-	ID   string `json:"id"`
-	Data []*ChildReceipt
+	ID   string          `json:"id"`
+	Data []*ChildReceipt `json:"data"`
 }
 
 type ChildReceipt struct {
@@ -32,7 +32,7 @@ type ChildReceipt struct {
 
 type ChildResp struct {
 	Found bool   `json:"found"`
-	Datum string `json:"satum"`
+	Datum string `json:"datum"`
 }
 
 type All struct {
