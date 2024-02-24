@@ -209,25 +209,3 @@ func split(s string, separator int) []string {
 	}
 	return res
 }
-
-//func isUniformUpToIndex(rr []rune, start int, target int) bool {
-//	if len(rr) == 0 {
-//		return false
-//	}
-//
-//	if start >= len(rr)-1 || target >= len(rr)-1 {
-//		return false
-//	}
-//
-//	if start == target {
-//		return true
-//	}
-//
-//	var flag = rr[0]
-//	for i := start; i <= target; i++ {
-//		if flag != rr[i] {
-//			return false
-//		}
-//	}
-//	return true
-//}
