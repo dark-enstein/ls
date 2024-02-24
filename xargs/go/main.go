@@ -8,15 +8,90 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"unicode/utf8"
+
+	"github.com/spf13/pflag"
 )
 
+const (
+	seperatorSpace = iota
+	seperatorLine
+	seperatorNull
+)
+
+var seperatorMap = map[int][]rune{
+	seperatorNull: {null},
+	seperatorLine: {newline},
+	seperatorSpace: {'\t', '\v', '\f', '\r', newline, space, '\u00FF',
+		'\u0085',
+		'\u00A0', '\u1680', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000'},
+}
+
+var null = '\u0000'
+var space = ' '
+var newline = '\n'
+
+var separator int
+
+var ScanNull = func(data []byte, atEOF bool) (advance int,
+	token []byte,
+	err error) {
+	// Skip leading null bytes.
+	start := 0
+	for width := 0; start < len(data); start += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[start:])
+		if !isNull(r) {
+			break
+		}
+	}
+
+	// Scan until null, marking end of word.
+	for width, i := 0, start; i < len(data); i += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[i:])
+		if !isNull(r) {
+			return i + width, data[start:i], nil
+		}
+	}
+
+	// Request more data.
+	return start, nil, nil
+}
+
+var num int
+var nullMode bool
+
+func init() {
+	separator = seperatorSpace
+	pflag.IntVarP(&num, "max-args", "n", 0,
+		"Use at most max-args arguments per command line.")
+	pflag.BoolVar(&nullMode, "0", false,
+		"Input items are terminated by a null character instead of by whitespace, and the quotes and backslash are not special (every character is taken literally). Disables the end of file string, which is treated like any other argument. Useful when input items might contain white space, quote marks, or backslashes. The GNU find -print0 option produces input suitable for this mode.")
+
+	pflag.Parse()
+}
+
 func main() {
+	// init buffer
 	stdin := bytes.Buffer{}
 	_, err := stdin.ReadFrom(os.Stdin)
 	if err != nil {
 		log.Fatal(err)
 	}
-	out, err := CoreOp(os.Args[1:], &stdin)
+
+	// check stdin args
+	if nullMode {
+		separator = seperatorNull
+	}
+
+	// check argument length
+	stdinSS := split(stdin.String(), separator)
+	if len(stdinSS) > num {
+		log.Fatal("too many arguments")
+	}
+
+	out, err := CoreOp(pflag.Args(), &stdin)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,36 +105,35 @@ func CoreOp(args []string, stdin io.Reader) (string, error) {
 	var res string
 	switch {
 	case lenArgs == 0:
-		res = parseStdin("echo", []string{}, stdin)
+		res = process("echo", []string{}, stdin)
 	case lenArgs == 1:
-		res = parseStdin(args[0], []string{}, stdin)
+		res = process(args[0], []string{}, stdin)
 	case lenArgs > 1:
-		res = parseStdin(args[0], args[1:], stdin)
+		res = process(args[0], args[1:], stdin)
 	}
 
 	return res, nil
 }
 
-func parseStdin(command string, args []string, stdin io.Reader) string {
+func process(command string, args []string, stdin io.Reader) string {
 	var res = ""
 	var lenBytesResp int64
+
 	// read into bytes
 	scanner := bufio.NewScanner(stdin)
 	scanner.Split(bufio.ScanWords)
 	for scanner.Scan() {
 		var resp = []byte{}
-		//var err error
+		var err error
 		argTxt := scanner.Text()
-		//log.Println("Processing:", scanner.Text())
-		// trim extraeneous bytes, extra space, empty lines, etc
-		//strings.Trim
+
 		// process words
 		var concatArgs = []string{}
 		concatArgs = append(append(concatArgs, args...), argTxt)
-		lenBytesResp, resp, _ = run(command, concatArgs)
-		//if err != nil {
-		//	fmt.Println("Command failed with:", err.Error())
-		//}
+		lenBytesResp, resp, err = run(command, concatArgs)
+		if err != nil {
+			fmt.Println("command failed with:", err.Error())
+		}
 		res = join(res, string(resp))
 	}
 
@@ -72,10 +146,7 @@ func parseStdin(command string, args []string, stdin io.Reader) string {
 }
 
 func run(command string, args []string) (int64, []byte, error) {
-	//log.Println("Command:", command)
-	//log.Println("Args:", args)
 	cmd := exec.Command(command, args...)
-	//cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	b, err := cmd.Output()
@@ -100,6 +171,63 @@ func join(s1, s2 string) string {
 		return s1
 	}
 	//fmt.Println("bytes:", []byte(s2))
-
 	return s1 + " " + s2
 }
+
+func isNull(r rune) bool {
+	if r == null {
+		return true
+	}
+	return false
+}
+
+func split(s string, separator int) []string {
+	seps := seperatorMap[separator]
+	// unwrap seps into map for easy retrieval
+	mapSeps := make(map[rune]bool, len(seps))
+	for i := 0; i < len(seps); i++ {
+		mapSeps[seps[i]] = true
+	}
+
+	// init variables
+	mutS := []rune(s)
+	var res = []string{}
+
+	lastSepIndex := -1 // ensure it doesn't conflate with the actual index 0
+	for i := 0; i < len(mutS); i++ {
+		if _, ok := mapSeps[mutS[i]]; ok {
+			// return early if index equals zero,
+			//it is the same as the former sep and they follow each other
+			if !(i == 0 || i == lastSepIndex+1) {
+				res = append(res, string(mutS[lastSepIndex+1:i]))
+			}
+			lastSepIndex = i
+		}
+	}
+	if lastSepIndex < len(mutS)-1 {
+		res = append(res, string(mutS[lastSepIndex+1:]))
+	}
+	return res
+}
+
+//func isUniformUpToIndex(rr []rune, start int, target int) bool {
+//	if len(rr) == 0 {
+//		return false
+//	}
+//
+//	if start >= len(rr)-1 || target >= len(rr)-1 {
+//		return false
+//	}
+//
+//	if start == target {
+//		return true
+//	}
+//
+//	var flag = rr[0]
+//	for i := start; i <= target; i++ {
+//		if flag != rr[i] {
+//			return false
+//		}
+//	}
+//	return true
+//}
