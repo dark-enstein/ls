@@ -49,6 +49,7 @@ func init() {
 	RootCmd.AddCommand(peelCmd)
 	RootCmd.AddCommand(listCmd)
 	RootCmd.AddCommand(deleteCmd)
+	RootCmd.AddCommand(initCmd)
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.vault.yaml)")
 

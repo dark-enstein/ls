@@ -24,8 +24,11 @@ func main() {
 	// starting
 	ctx := context.Background()
 	logger := vlog.New(i.debug)
-	srv := service.New(ctx, logger)
-	if err := srv.Run(ctx); err != nil {
+	srv, err := service.New(ctx, logger, service.WithStoreStr(service.STORE_FILE), service.WithFileLoc("./gob"))
+	if err != nil {
+		logger.Logger().Fatal().Msgf("error while setting up service: %w", err)
+	}
+	if err = srv.Run(ctx); err != nil {
 		logger.Logger().Fatal().Msgf("error while service is starting: %s\n", err.Error())
 	}
 }
