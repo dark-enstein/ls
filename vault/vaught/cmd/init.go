@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dark-enstein/vault/internal/store"
+	"github.com/dark-enstein/vault/internal/tokenize"
 	"github.com/dark-enstein/vault/internal/vlog"
 	"github.com/dark-enstein/vault/service"
 	"github.com/mitchellh/go-homedir"
+	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/xid"
 	"github.com/rs/zerolog/log"
@@ -96,7 +98,7 @@ Each storage option offers specific flags for customization, providing the flexi
 		}
 
 		// persist to disk at config loc
-		err = jsonEncode(configPath, ic, logger)
+		err = jsonEncode(DefaultConfigLoc, ic, logger)
 		if err != nil {
 			logger.Logger().Fatal().Msgf("error occurred while setting up cli: %s", err)
 		}
@@ -113,14 +115,14 @@ var debug bool
 
 func init() {
 	initCmd.Flags().StringVarP(&storeStr, "store", "s", "file", "Specify the storage backend for the service. Options: file, gob, redis, in-memory syncmap.")
-	initCmd.Flags().StringVarP(&redisConnString, "connectionString", "cs", store.DefaultRedisConnectionString, "Specify the Redis connection string.")
+	initCmd.Flags().StringVarP(&redisConnString, "connectionString", "c", store.DefaultRedisConnectionString, "Specify the Redis connection string.")
 	initCmd.Flags().StringVarP(&gobLoc, "gobLoc", "g", DefaultGobLoc, "Specify the disk location for the gob store.")
 	initCmd.Flags().StringVarP(&fileLoc, "fileLoc", "f", DefaultStoreLoc, "Specify the disk location for the file store.")
-	initCmd.Flags().StringVarP(&configPath, "configPath", "c", DefaultConfigLoc, "Specify the disk location for the config file.")
+	//initCmd.Flags().StringVarP(&configPath, "configPath", "c", DefaultConfigLoc, "Specify the disk location for the config file.")
 	initCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable or disable debug mode.")
 }
 
-var configPath string
+//var configPath string
 
 type InstanceConfig struct {
 	ID          string `json:"id"`
@@ -130,6 +132,34 @@ type InstanceConfig struct {
 	StoreType   string `json:"store_type"`
 	Debug       bool   `json:"debug"`
 	LastUse     int64  `json:"last_login"`
+}
+
+func (ic *InstanceConfig) Manager(ctx context.Context, logger *vlog.Logger) (*tokenize.Manager, error) {
+	log := logger.Logger()
+	switch storeStr {
+	case service.STORE_FILE:
+		log.Info().Msg("Using File storage")
+		return tokenize.NewManager(ctx, logger, tokenize.WithStore(store.NewFile(ic.StoreLoc, logger))), nil
+	case service.STORE_GOB:
+		log.Info().Msg("Using Gob storage")
+		gob, err := store.NewGob(ctx, ic.StoreLoc, logger, false)
+		if err != nil {
+			log.Fatal().Msgf("error while creating storage backend: %s", err)
+		}
+		return tokenize.NewManager(ctx, logger, tokenize.WithStore(gob)), nil
+	case service.STORE_REDIS:
+		log.Info().Msg("Using Redis storage")
+		r, err := store.NewRedis(ic.RedisString, logger)
+		if err != nil {
+			log.Fatal().Msgf("error while creating storage backend: %s", err)
+		}
+		return tokenize.NewManager(ctx, logger, tokenize.WithStore(r)), nil
+	case service.STORE_MAP:
+		log.Info().Msg("Using In-memory map storage")
+		return tokenize.NewManager(ctx, logger, tokenize.WithStore(store.NewSyncMap(ctx, logger))), nil
+	default:
+		return nil, errors.New("unrecognized store parameter")
+	}
 }
 
 func jsonEncode(path string, ic InstanceConfig, logger *vlog.Logger) error {
