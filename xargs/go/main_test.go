@@ -15,9 +15,9 @@ var tableTest = []struct {
 	args        []string
 	expectedOut string
 }{{
-	bytes.NewBuffer([]byte("gamma epsilon thundero")),
+	bytes.NewBuffer([]byte("gamma epsilon thundero vaknis")),
 	[]string{"echo"},
-	"gamma\nepsilon\nthundero\n",
+	"gamma\nepsilon\nthundero\nvaknis\n",
 }}
 
 func TestCoreOp(t *testing.T) {

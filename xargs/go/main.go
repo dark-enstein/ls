@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -31,7 +33,7 @@ var seperatorMap = map[int][]rune{
 var null = '\u0000'
 var space = ' '
 var newline = '\n'
-var separator int
+var seperator = 0
 
 var ScanNull = func(data []byte, atEOF bool) (advance int,
 	token []byte,
@@ -64,7 +66,7 @@ var procs int
 var nullMode bool
 
 func init() {
-	separator = seperatorSpace
+	seperator = seperatorSpace
 	pflag.IntVarP(&num, "max-args", "n", 1,
 		"Use at most max-args arguments per command line.")
 	pflag.BoolVar(&nullMode, "0", false,
@@ -91,7 +93,7 @@ func main() {
 
 	// check stdin args
 	if nullMode {
-		separator = seperatorNull
+		seperator = seperatorNull
 	}
 
 	out, err := CoreOp(pflag.Args(), &stdin)
@@ -119,8 +121,11 @@ func CoreOp(args []string, stdin io.Reader) (string, error) {
 }
 
 func process(command string, args []string, stdin io.Reader) string {
-	var results = []string{}
-	//var concatArgs = args
+	// using map to keep the order of results
+	var results = make(map[int]string)
+	var index = 0
+	// ensure that more go routines than procs is not run at any time
+	var currentProcsChan = make(chan int, procs)
 	var wg sync.WaitGroup
 	var m sync.Mutex
 
@@ -138,21 +143,25 @@ func process(command string, args []string, stdin io.Reader) string {
 		// execute when the additional commands added to the replicated args
 		//equals the max-args
 		if len(batch) == num {
+			index++
+			currentProcsChan <- 1 // should block until space is available
 			wg.Add(1)
-			go func(batchArgs []string) {
+			go func(i int, batchArgs []string) {
 				defer wg.Done()
 				result, err := _proc(command, append(args, batchArgs...))
 				if err != nil {
 					fmt.Println("command failed with:", err.Error())
 				}
 				m.Lock()
-				results = append(results, result)
+				results[i] = result
 				// reset concatenated args
 				//concatArgs = args
+				trash := <-currentProcsChan // remove from channel so make space
+				// for new process
+				_ = trash
 				m.Unlock()
-			}(batch)
+			}(index, batch)
 			batch = []string{} // reset
-			continue
 		}
 	}
 
@@ -160,23 +169,27 @@ func process(command string, args []string, stdin io.Reader) string {
 	//when the num is lesser or greater than the split contents of stdin,
 	//flushing the remaining contents
 	if len(batch) > 0 {
+		index++
+		currentProcsChan <- 1
 		wg.Add(1)
-		go func(batchArgs []string) {
+		go func(i int, batchArgs []string) {
 			defer wg.Done()
 			result, err := _proc(command, append(args, batchArgs...))
 			if err != nil {
 				fmt.Println("command failed with:", err.Error())
 			}
 			m.Lock()
-			results = append(results, result)
+			results[i] = result
 			// reset concatenated args
 			//concatArgs = args
+			d := <-currentProcsChan
+			_ = d
 			m.Unlock()
-		}(batch)
+		}(index, batch)
 	}
 	wg.Wait()
 
-	return join(results...)
+	return join(results)
 }
 
 func _proc(command string, concatArgs []string) (string, error) {
@@ -203,17 +216,28 @@ func run(command string, args []string) (int64, []byte, error) {
 	return int64(len(returnBytes)), returnBytes, nil
 }
 
-func join(ss ...string) string {
+func join(ss map[int]string) string {
 	if len(ss) == 0 {
-		return ss[0]
+		return ""
 	}
 
-	var s = ""
-	for i := 0; i < len(ss); i++ {
-		s += ss[i]
+	keys := make([]int, 0, len(ss))
+	for k := range ss {
+		keys = append(keys, k)
 	}
-	return s
+
+	sort.Ints(keys)
+
+	var s strings.Builder
+	for _, k := range keys {
+		s.WriteString(ss[k])
+	}
+
+	return s.String()
 }
+
+// implement quick sort instead of sort.Int
+func quicksort(s []string) []string { return s }
 
 func split(s string, separator int) []string {
 	seps := seperatorMap[separator]
