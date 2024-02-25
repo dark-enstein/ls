@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/spf13/pflag"
@@ -30,7 +31,6 @@ var seperatorMap = map[int][]rune{
 var null = '\u0000'
 var space = ' '
 var newline = '\n'
-
 var separator int
 
 var ScanNull = func(data []byte, atEOF bool) (advance int,
@@ -41,7 +41,7 @@ var ScanNull = func(data []byte, atEOF bool) (advance int,
 	for width := 0; start < len(data); start += width {
 		var r rune
 		r, width = utf8.DecodeRune(data[start:])
-		if !isNull(r) {
+		if !(r != null) {
 			break
 		}
 	}
@@ -50,7 +50,7 @@ var ScanNull = func(data []byte, atEOF bool) (advance int,
 	for width, i := 0, start; i < len(data); i += width {
 		var r rune
 		r, width = utf8.DecodeRune(data[i:])
-		if !isNull(r) {
+		if !(r != null) {
 			return i + width, data[start:i], nil
 		}
 	}
@@ -60,19 +60,28 @@ var ScanNull = func(data []byte, atEOF bool) (advance int,
 }
 
 var num int
+var procs int
 var nullMode bool
 
 func init() {
 	separator = seperatorSpace
-	pflag.IntVarP(&num, "max-args", "n", 0,
+	pflag.IntVarP(&num, "max-args", "n", 1,
 		"Use at most max-args arguments per command line.")
 	pflag.BoolVar(&nullMode, "0", false,
 		"Input items are terminated by a null character instead of by whitespace, and the quotes and backslash are not special (every character is taken literally). Disables the end of file string, which is treated like any other argument. Useful when input items might contain white space, quote marks, or backslashes. The GNU find -print0 option produces input suitable for this mode.")
+	pflag.IntVarP(&procs, "max-procs", "P", 1,
+		"Run up to max-procs processes at a time; the default is 1. If max-procs is 0, xargs will run as many processes as possible at a time. Use the -n option with -P; otherwise chances are that only one exec will be done.")
 
 	pflag.Parse()
 }
 
 func main() {
+	//num = 1 // for testing
+	if num == 0 {
+		fmt.Println("cargs: -n 0: too small")
+		os.Exit(1)
+	}
+
 	// init buffer
 	stdin := bytes.Buffer{}
 	_, err := stdin.ReadFrom(os.Stdin)
@@ -83,12 +92,6 @@ func main() {
 	// check stdin args
 	if nullMode {
 		separator = seperatorNull
-	}
-
-	// check argument length
-	stdinSS := split(stdin.String(), separator)
-	if len(stdinSS) > num {
-		log.Fatal("too many arguments")
 	}
 
 	out, err := CoreOp(pflag.Args(), &stdin)
@@ -116,33 +119,74 @@ func CoreOp(args []string, stdin io.Reader) (string, error) {
 }
 
 func process(command string, args []string, stdin io.Reader) string {
-	var res = ""
-	var lenBytesResp int64
+	var results = []string{}
+	//var concatArgs = args
+	var wg sync.WaitGroup
+	var m sync.Mutex
 
-	// read into bytes
+	// read into bytes until valid sep
+	var batch = []string{}
 	scanner := bufio.NewScanner(stdin)
 	scanner.Split(bufio.ScanWords)
 	for scanner.Scan() {
-		var resp = []byte{}
-		var err error
 		argTxt := scanner.Text()
 
-		// process words
-		var concatArgs = []string{}
-		concatArgs = append(append(concatArgs, args...), argTxt)
-		lenBytesResp, resp, err = run(command, concatArgs)
-		if err != nil {
-			fmt.Println("command failed with:", err.Error())
+		// add arguments to the args from duplicated until num
+		m.Lock()
+		batch = append(batch, argTxt)
+		m.Unlock()
+		// execute when the additional commands added to the replicated args
+		//equals the max-args
+		if len(batch) == num {
+			wg.Add(1)
+			go func(batchArgs []string) {
+				defer wg.Done()
+				result, err := _proc(command, append(args, batchArgs...))
+				if err != nil {
+					fmt.Println("command failed with:", err.Error())
+				}
+				m.Lock()
+				results = append(results, result)
+				// reset concatenated args
+				//concatArgs = args
+				m.Unlock()
+			}(batch)
+			batch = []string{} // reset
+			continue
 		}
-		res = join(res, string(resp))
 	}
 
-	// process output
-	if lenBytesResp > 0 {
-		res += "\n"
+	// handle split buffer length that isn't a mod of num.
+	//when the num is lesser or greater than the split contents of stdin,
+	//flushing the remaining contents
+	if len(batch) > 0 {
+		wg.Add(1)
+		go func(batchArgs []string) {
+			defer wg.Done()
+			result, err := _proc(command, append(args, batchArgs...))
+			if err != nil {
+				fmt.Println("command failed with:", err.Error())
+			}
+			m.Lock()
+			results = append(results, result)
+			// reset concatenated args
+			//concatArgs = args
+			m.Unlock()
+		}(batch)
 	}
+	wg.Wait()
 
-	return res
+	return join(results...)
+}
+
+func _proc(command string, concatArgs []string) (string, error) {
+	var respBytes = []byte{}
+	var err error
+	_, respBytes, err = run(command, concatArgs)
+	if err != nil {
+		return "", err
+	}
+	return string(respBytes), nil
 }
 
 func run(command string, args []string) (int64, []byte, error) {
@@ -155,34 +199,25 @@ func run(command string, args []string) (int64, []byte, error) {
 	}
 
 	var returnBytes []byte
-	if len(b) > 1 && b[len(b)-1] == '\n' {
-		// b[:len(b)-1] removes newlines from return bytes
-		returnBytes = b[:len(b)-1]
-	} else {
-		returnBytes = b
-	}
+	returnBytes = b
 	return int64(len(returnBytes)), returnBytes, nil
 }
 
-func join(s1, s2 string) string {
-	if len(s1) == 0 {
-		return s2
-	} else if len(s2) == 0 {
-		return s1
+func join(ss ...string) string {
+	if len(ss) == 0 {
+		return ss[0]
 	}
-	//fmt.Println("bytes:", []byte(s2))
-	return s1 + " " + s2
-}
 
-func isNull(r rune) bool {
-	if r == null {
-		return true
+	var s = ""
+	for i := 0; i < len(ss); i++ {
+		s += ss[i]
 	}
-	return false
+	return s
 }
 
 func split(s string, separator int) []string {
 	seps := seperatorMap[separator]
+
 	// unwrap seps into map for easy retrieval
 	mapSeps := make(map[rune]bool, len(seps))
 	for i := 0; i < len(seps); i++ {
@@ -197,7 +232,7 @@ func split(s string, separator int) []string {
 	for i := 0; i < len(mutS); i++ {
 		if _, ok := mapSeps[mutS[i]]; ok {
 			// return early if index equals zero,
-			//it is the same as the former sep and they follow each other
+			//it is the same as the former sep, and they follow each other
 			if !(i == 0 || i == lastSepIndex+1) {
 				res = append(res, string(mutS[lastSepIndex+1:i]))
 			}

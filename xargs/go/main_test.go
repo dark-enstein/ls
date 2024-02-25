@@ -17,7 +17,7 @@ var tableTest = []struct {
 }{{
 	bytes.NewBuffer([]byte("gamma epsilon thundero")),
 	[]string{"echo"},
-	"gamma epsilon thundero\n",
+	"gamma\nepsilon\nthundero\n",
 }}
 
 func TestCoreOp(t *testing.T) {
@@ -30,6 +30,7 @@ func TestCoreOp(t *testing.T) {
 		expectedOut := tableTest[i].expectedOut
 		if out != expectedOut {
 			t.Errorf("expected %s, got %s", expectedOut, out)
+			//t.Errorf("expected %v, got %v", []byte(expectedOut), []byte(out))
 		}
 	}
 }
@@ -41,8 +42,9 @@ func TestCargs(t *testing.T) {
 	for i := 0; i < len(tableTest); i++ {
 		cmd := exec.Command(bin, tableTest[i].args[0])
 		cmd.Stdin = tableTest[i].buf
-		b, err := cmd.Output()
+		b, err := cmd.CombinedOutput()
 		if err != nil {
+			fmt.Println(string(b))
 			t.Fatal(err)
 		}
 
@@ -51,6 +53,7 @@ func TestCargs(t *testing.T) {
 		expectedOut := tableTest[i].expectedOut
 		if out != expectedOut {
 			t.Errorf("expected %s, got %s", expectedOut, out)
+			//t.Errorf("expected %v, got %v", []byte(expectedOut), []byte(out))
 		}
 	}
 }
