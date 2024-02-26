@@ -6,3 +6,5 @@
 gob
 test
 vault
+target/**
+target
