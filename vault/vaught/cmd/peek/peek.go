@@ -26,8 +26,8 @@ func NewPeekCmd() *cobra.Command {
 	peekCmd := &cobra.Command{
 		Use:   "peek",
 		Short: "Displays details of a specific token by ID",
-		Long: `The 'peek' command retrieves and displays the details of a specific token stored in the vault, identified by its ID. 
-This is useful for quickly viewing the properties of a particular token without needing to list all tokens.
+		Long: `The 'peek' command retrieves and decrypts a specific token stored in the vault, identified by its ID without decrypting it. 
+This is useful for quickly viewing the encrypted version of a particular token without needing to list all tokens.
 
 Usage:
 
@@ -35,6 +35,7 @@ Usage:
 
 Replace '<token-id>' with the actual ID of the token you wish to view. The token's details will be displayed in JSON format, providing comprehensive information about the token's attributes.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Resolve persistent flags
 			debug, err := cmd.Flags().GetBool("debug")
 			if err != nil {
 				log.Error().Msgf("error retrieving persistent flag: %s: %w", "debug", err)
@@ -42,8 +43,6 @@ Replace '<token-id>' with the actual ID of the token you wish to view. The token
 			logger := vlog.New(debug)
 			ctx := context.Background()
 			bytes, err := pop.Run(ctx, logger)
-
-			// Resolve persistent flags
 
 			pop.debug = debug
 			if err != nil {

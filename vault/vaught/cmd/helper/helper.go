@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/dark-enstein/vault/internal/store"
 	"github.com/dark-enstein/vault/internal/tokenize"
 	"github.com/dark-enstein/vault/internal/vlog"
@@ -78,7 +79,16 @@ func (ic *InstanceConfig) JsonEncode(path string) error {
 
 	log.Info().Msgf("setting up vault config at location: %s", path)
 
-	fd, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	_, err := os.Stat(DefaultRootConfig)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(DefaultRootConfig, 0655)
+		if err != nil {
+			log.Error().Msgf("encountered error while setting up config dir %s: %s", path, err)
+			return err
+		}
+	}
+
+	fd, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Error().Msgf("encountered error while opening file at location %s: %s", path, err)
 		return err
@@ -90,6 +100,8 @@ func (ic *InstanceConfig) JsonEncode(path string) error {
 		log.Error().Msgf("encountered error while encoding json %s: %s", path, err)
 		return err
 	}
+
+	fmt.Println(string(jsonBytes))
 
 	_, err = fd.Write(jsonBytes)
 	if err != nil {

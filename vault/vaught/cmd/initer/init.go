@@ -1,7 +1,7 @@
 /*
 Copyright © 2024 Ayobami Bamigboye <ayo@greystein.com>
 */
-package init
+package initer
 
 import (
 	"context"

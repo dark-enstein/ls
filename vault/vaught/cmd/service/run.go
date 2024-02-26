@@ -24,7 +24,7 @@ Supported storage options include:
 - File: A local file system-based storage for persistence.
 - Gob: A GOB file storage, offering serialization for Go data structures.
 - Redis: A Redis server connection for distributed storage and caching.
-- In-memory syncmap: A concurrent map for in-memory storage, suitable for temporary data and testing purposes.
+- In-memory concurrent-safe map: A concurrent map for in-memory storage, suitable for temporary data and testing purposes.
 
 Examples:
 Run the service with file storage:
