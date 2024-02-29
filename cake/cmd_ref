@@ -1,0 +1,13 @@
+# retrieve core-dumps from github actions runner
+
+# have a binary component
+
+# compile, and store binary for use at location
+
+# configure sysctl parameter for use
+
+# start listening process // fs_notify // onclosewrite
+
+# harvest coredump > binary
+
+# package into artifact and upload as github artifact for analysis
