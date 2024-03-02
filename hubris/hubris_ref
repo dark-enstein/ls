@@ -1,0 +1,7 @@
+# define a framework around ranking functions, supporting an arbitrary set of decisions, and scoring each candidate through pipelining. The candidates with the highest scores win the challenge, and are selected.
+examples:
+   - kubernetes scheduling decisions
+
+
+considerations
+0- multi-decision algorithm path
