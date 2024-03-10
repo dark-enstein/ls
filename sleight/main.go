@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/dark-enstein/sleight/internal/config"
-	jury "github.com/dark-enstein/sleight/internal/jury"
+	"github.com/dark-enstein/sleight/internal/jury"
 	"github.com/dark-enstein/sleight/internal/manager"
 	"github.com/dark-enstein/sleight/internal/trace"
 	"github.com/spf13/pflag"
@@ -28,7 +28,7 @@ func _flags() (*config.Config, int) {
 
 func main() {
 	// dubidu
-	fmt.Println("Welcome to Sleight")
+	fmt.Println(string(config.HeadingText))
 
 	// init flags
 	cfg, exit := _flags()
@@ -38,18 +38,21 @@ func main() {
 	llevel, _ := cfg.LogLevel()
 
 	// init logger
-	logger, err := trace.New(llevel)
+	logger, err := trace.New(trace.Level(llevel))
 	if err != nil {
 		trace.Tmp().Fatal(fmt.Sprintln("exit:", jury.ErrInternal))
 	}
 
+	lug := logger.Logger()
 	// init manager
 	man := manager.NewManager(logger)
+	lug.Debug("manager initialized")
 
 	// exitChan for graceful shutdown
 	exitChan := make(chan struct{}, 1)
 	ctx := context.Background()
 
+	lug.Debug("setting up Run")
 	e := man.Run(ctx, exitChan)
 	if e != jury.ErrSuccess {
 		log.Fatalln("error running sleight. exiting")

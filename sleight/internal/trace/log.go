@@ -50,7 +50,7 @@ type Zap struct {
 }
 
 const (
-	defaultLogLoc = "./log/s.log"
+	defaultLogLoc = "./.log/s.log"
 )
 
 // New instantiates a new logger instance which logs to both stdout and to a file

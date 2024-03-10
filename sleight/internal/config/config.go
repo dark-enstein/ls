@@ -1,7 +1,5 @@
 package config
 
-import "github.com/dark-enstein/sleight/internal/trace"
-
 const (
 	FlagLevel      = "level"
 	FlagShortLevel = "l"
@@ -22,22 +20,22 @@ type Config struct {
 	validated bool
 }
 
-func (c *Config) resolveLevel() trace.Level {
+func (c *Config) resolveLevel() int {
 	switch c.Level {
 	case DebugString:
-		return trace.DebugLevel
+		return DebugLevel
 	case WarnString:
-		return trace.WarnLevel
+		return WarnLevel
 	case ErrorString:
-		return trace.ErrorLevel
+		return ErrorLevel
 	case FatalString:
-		return trace.FatalLevel
+		return FatalLevel
 	case PanicString:
-		return trace.PanicLevel
+		return PanicLevel
 	case InfoString:
-		return trace.InfoLevel
+		return InfoLevel
 	default:
-		return trace.InvalidLevel
+		return InvalidLevel
 	}
 }
 
@@ -47,12 +45,23 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) LogLevel() (trace.Level, error) {
+func (c *Config) LogLevel() (int, error) {
 	if !c.validated {
 		// always validate first, if not validated yet
 		if err := c.Validate(); err != nil {
-			return trace.InvalidLevel, err
+			return InvalidLevel, err
 		}
 	}
 	return c.resolveLevel(), nil
 }
+
+// duplicate of what's in trace/log
+const (
+	InfoLevel = iota
+	DebugLevel
+	WarnLevel
+	ErrorLevel
+	FatalLevel
+	PanicLevel
+	InvalidLevel
+)

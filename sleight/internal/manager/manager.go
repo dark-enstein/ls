@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/dark-enstein/sleight/internal/jury"
 	"github.com/dark-enstein/sleight/internal/trace"
+	"github.com/dark-enstein/vault/vaught/cmd/store"
 	"sync"
 )
 
@@ -36,7 +37,10 @@ func NewManager(m trace.Monitor) *Manager {
 
 // Run does the core of Manager tasks
 func (m *Manager) Run(ctx context.Context, exitChan chan struct{}) int {
+	lug := m.logger.Logger()
 	// check and set up bin/state
+	lug.Info("running")
+	store.NewStoreCmd()
 
 	// spawn go routines and other admin tasks
 
