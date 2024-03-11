@@ -4,13 +4,14 @@ import (
 	"context"
 	"github.com/dark-enstein/sleight/internal/jury"
 	"github.com/dark-enstein/sleight/internal/trace"
-	"github.com/dark-enstein/vault/vaught/cmd/store"
+	"github.com/dark-enstein/vault/pkg/store"
 	"sync"
 )
 
 type Manager struct {
 	pCount int8
 	logger trace.Monitor
+	gob    *store.Gob
 	// comm and management channels
 	cmdChan  chan []byte
 	exitChan chan struct{}
@@ -38,12 +39,29 @@ func NewManager(m trace.Monitor) *Manager {
 // Run does the core of Manager tasks
 func (m *Manager) Run(ctx context.Context, exitChan chan struct{}) int {
 	lug := m.logger.Logger()
+	var err error
 	// check and set up bin/state
 	lug.Info("running")
-	store.NewStoreCmd()
 
-	// spawn go routines and other admin tasks
+	// validate user actions
+	m.runValidation()
+
+	// connect to shared memory? mmap
+	m.gob, err = store.NewGob(ctx, "./.fanny", nil, false)
+	if err != nil {
+		return 0
+	}
+
+	// unmarshall into struct and check state of system
+	// determine the last/current state of the system, and simply carry on from there (define states of the system)
+
+	// determine action
+
+	// spawn go routines and other admin tasks // delegate this to life?
 
 	// return
 	return jury.ErrSuccess
 }
+
+// runValidation validates the user inputs, ensuring consistency
+func (m *Manager) runValidation() {}
