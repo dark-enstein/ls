@@ -22,6 +22,7 @@ require (
 	github.com/redis/go-redis/v9 v9.4.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/rs/zerolog v1.32.0 // indirect
+	go.etcd.io/bbolt v1.3.9 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
 )

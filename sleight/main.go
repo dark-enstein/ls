@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+
 	"github.com/dark-enstein/sleight/internal/config"
 	"github.com/dark-enstein/sleight/internal/jury"
 	"github.com/dark-enstein/sleight/internal/manager"
 	"github.com/dark-enstein/sleight/internal/trace"
 	"github.com/spf13/pflag"
-	"log"
 )
 
 func _flags() (*config.Config, int) {
@@ -57,5 +58,4 @@ func main() {
 	if e != jury.ErrSuccess {
 		log.Fatalln("error running sleight. exiting")
 	}
-
 }

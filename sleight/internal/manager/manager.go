@@ -2,10 +2,15 @@ package manager
 
 import (
 	"context"
+	"sync"
+
 	"github.com/dark-enstein/sleight/internal/jury"
 	"github.com/dark-enstein/sleight/internal/trace"
 	"github.com/dark-enstein/vault/pkg/store"
-	"sync"
+)
+
+const (
+	DefaultStateStore = "./.store"
 )
 
 type Manager struct {
@@ -47,7 +52,7 @@ func (m *Manager) Run(ctx context.Context, exitChan chan struct{}) int {
 	m.runValidation()
 
 	// connect to shared memory? mmap
-	m.gob, err = store.NewGob(ctx, "./.fanny", nil, false)
+	m.gob, err = store.NewGob(ctx, DefaultStateStore, nil, false)
 	if err != nil {
 		return 0
 	}
