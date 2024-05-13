@@ -3,7 +3,10 @@ package internal
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"strings"
+	"tuk/internal/config"
 )
 
 const (
@@ -12,6 +15,7 @@ const (
 	Logs   = "logs"
 )
 
+// Plane represents the plane of the TUI
 type Plane struct {
 	// Manager handles manages the events lifetime and the rendering on the TUI
 	m *Manager
@@ -19,8 +23,10 @@ type Plane struct {
 	ps []string
 }
 
+// PlaneOption is the option to configure the plane
 type PlaneOption func(*Plane)
 
+// WithPaths sets the paths to watch
 func WithPaths(path string) PlaneOption {
 	return func(p *Plane) {
 		if splices := strings.Split(path, ","); len(splices) > 1 {
@@ -30,6 +36,31 @@ func WithPaths(path string) PlaneOption {
 	}
 }
 
+// WithConfig sets the configuration for the plane
+func WithConfig(config *config.Config) PlaneOption {
+	return func(p *Plane) {
+		// paths := make([]string, 0, len(config.Paths)+len(config.Args.Path))
+		paths := []string{}
+		// funnel config paths
+		for _, path := range config.Paths {
+			paths = append(paths, path.Raw)
+		}
+		log.Println("config paths", paths)
+
+		// funnel args paths into slice
+		if config.Args.Path != "" {
+			splice := strings.Split(config.Args.Path, ",")
+			paths = append(paths, splice...)
+		}
+		log.Println("args paths", paths)
+
+		// consolidate paths
+		p.ps = append(p.ps, paths...)
+		log.Println("all paths", p.ps)
+	}
+}
+
+// NewPlane initializes a new plane instance
 func NewPlane(ctx context.Context, opts ...PlaneOption) (*Plane, error) {
 	// Initialize a new manager instance
 	m, err := NewManager(ctx)
@@ -46,26 +77,35 @@ func NewPlane(ctx context.Context, opts ...PlaneOption) (*Plane, error) {
 	p := &Plane{
 		m: m,
 	}
+	log.Printf("plane structure i: %#v", p.ps)
 
 	for i := range opts {
 		opts[i](p)
 	}
+	log.Printf("plane structure ii: %#v", p.ps)
 
 	return p, err
 }
 
+// Listen starts listening for events and logs
 func (p *Plane) Listen() {
 	p.m.Listen()
 }
 
+// Run starts the TUI
 func (p *Plane) Run() {
+	// Clear Stdout
+	fmt.Fprintf(os.Stdout, "\033[2J")
+	// Run
 	p.m.Run(p.ps...)
 }
 
+// Close closes the plane and its components: watcher and processor
 func (p *Plane) Close() {
 	p.m.Close()
 }
 
+// Log logs a message to the TUI log view
 func (p *Plane) Log(msg string, args ...string) {
 	p.m.Log(fmt.Sprintf(msg, args))
 }

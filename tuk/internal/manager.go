@@ -28,18 +28,23 @@ type Manager struct {
 	paths []Path
 }
 
+// count is the counter for the number of times the layout is called
+var count int
+
 // Path represents a path to watch
 type Path struct {
 	raw      string
 	resolved string
 }
 
+// NewPath creates a new path object
 func NewPath(raw string) *Path {
 	return &Path{
 		raw: raw,
 	}
 }
 
+// Validate validates the path and resolves it
 func (p *Path) Validate() error {
 	// Resolve the path
 	abs, err := filepath.Abs(p.raw)
@@ -57,11 +62,13 @@ func (p *Path) Validate() error {
 	return nil
 }
 
+// Name returns the name of the path
 func (p *Path) Name() string {
 	return p.resolved
 }
 
 var (
+	// gManagers is list of the avaialble managers
 	gManagers = []gocui.Manager{&DefaultManager{}}
 )
 
@@ -89,6 +96,7 @@ func NewManager(ctx context.Context) (*Manager, error) {
 	return m, nil
 }
 
+// Init initializes the managers' comoonents: watcher and processor
 func (m *Manager) Init() error {
 	err := m.initWatcher(context.Background())
 	if err != nil {
@@ -99,11 +107,13 @@ func (m *Manager) Init() error {
 	return nil
 }
 
+// Listen starts listening for events and logs
 func (m *Manager) Listen() {
 	m.listenOutput()
 	m.listenFileEvents()
 }
 
+// Close closes the manager components: watcher and gocui instance
 func (m *Manager) Close() {
 	// Close the watcher
 	m.w.Close()
@@ -111,17 +121,32 @@ func (m *Manager) Close() {
 	m.g.Close()
 }
 
+// DefaultManager is the default manager for the TUI
 type DefaultManager struct {
+	maxX, maxY int
 }
 
-func (m *DefaultManager) Name() string {
+// Name returns the name of the manager
+func (dm *DefaultManager) Name() string {
 	return "default"
 }
 
-func (m *DefaultManager) Layout(g *gocui.Gui) error {
+// Layout sets the layout for the manager. Satisfies the gocui.Manager interface
+func (dm *DefaultManager) Layout(g *gocui.Gui) error {
 	// Set the layout for the manager
-	maxX, maxY := g.Size()
-	if v, err := g.SetView(Events, 0, 0, maxX-1, maxY-1); err != nil {
+	dm.maxX, dm.maxY = g.Size()
+	// if count == 0 {
+	// 	g.Update(func(g *gocui.Gui) error {
+	// 		v, err := g.View(Logs)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		fmt.Fprintf(v, "Terminal MaxX: %d, MaxY: %d", dm.maxX, dm.maxY)
+	// 		return nil
+	// 	})
+	// 	count++
+	// }
+	if v, err := g.SetView(Events, 0, 0, dm.maxX-1, dm.maxY-1); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
@@ -129,7 +154,7 @@ func (m *DefaultManager) Layout(g *gocui.Gui) error {
 		v.Autoscroll = true
 	}
 
-	if h, err := g.SetView(Help, maxX-25, 0, maxX-1, 9); err != nil {
+	if h, err := g.SetView(Help, int(float64(dm.maxX)*0.90), int(float64(dm.maxY)*0.05), int(float64(dm.maxX)*0.9999), int(float64(dm.maxY)*0.20)); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
@@ -140,7 +165,7 @@ func (m *DefaultManager) Layout(g *gocui.Gui) error {
 		h.FgColor = gocui.ColorGreen
 	}
 
-	if h, err := g.SetView(Logs, maxX-50, 10, maxX-1, 25); err != nil {
+	if h, err := g.SetView(Logs, int(float64(dm.maxX)*0.85), int(float64(dm.maxY)*0.25), int(float64(dm.maxX)*0.9999), int(float64(dm.maxY)*0.98)); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
@@ -152,10 +177,12 @@ func (m *DefaultManager) Layout(g *gocui.Gui) error {
 	return nil
 }
 
+// SetManagers sets the managers for the gocui instance
 func (m *Manager) SetManagers() {
 	m.g.SetManager(gManagers...)
 }
 
+// Update updates the target view with the specified message
 func (m *Manager) Update(view, msg string, clear bool) {
 	m.g.Update(func(g *gocui.Gui) error {
 		v, err := g.View(view)
@@ -170,8 +197,10 @@ func (m *Manager) Update(view, msg string, clear bool) {
 	})
 }
 
+// Run starts the TUI pointing to the specified paths
 func (m *Manager) Run(paths ...string) error {
 	m.AddPaths(paths...)
+	m.Log("Paths: %v", m.paths)
 	m.Log("Running manager main loop")
 	if err := m.g.MainLoop(); err != nil && err != gocui.ErrQuit {
 		return err
@@ -179,6 +208,7 @@ func (m *Manager) Run(paths ...string) error {
 	return nil
 }
 
+// AddPaths adds the specified paths to the manager
 func (m *Manager) AddPaths(paths ...string) {
 	// m.Log("Adding paths: %v", paths...)
 	for i := 0; i < len(paths); i++ {
@@ -189,11 +219,13 @@ func (m *Manager) AddPaths(paths ...string) {
 	}
 }
 
+// Log logs a message to the TUI log view
 func (m *Manager) Log(msg string, args ...any) {
 	msg = fmt.Sprintf(msg, args...)
 	m.LogChan <- msg
 }
 
+// Publish publishes the event to the event channel
 func (m *Manager) Publish(file, eventType string) {
 	m.Log("Publishing event from: %s", file)
 	buf, err := m.Processor.Process(file, eventType)
@@ -205,6 +237,7 @@ func (m *Manager) Publish(file, eventType string) {
 	m.EventChan <- bytes.NewBuffer(buf)
 }
 
+// initWatcher initializes the fsnotify watcher
 func (m *Manager) initWatcher(ctx context.Context) error {
 	// Initialize fsnotify watcher
 	watcher, err := fsnotify.NewWatcher()
@@ -217,6 +250,7 @@ func (m *Manager) initWatcher(ctx context.Context) error {
 	return nil
 }
 
+// AddPath adds the specified path to the manager
 func (m *Manager) AddPath(path string) error {
 	m.Log("Adding path: %s", path)
 	newPath := NewPath(path)
@@ -232,6 +266,7 @@ func (m *Manager) AddPath(path string) error {
 	return nil
 }
 
+// listenFileEvents listens for file events
 func (m *Manager) listenFileEvents() {
 	go func() {
 		for {
@@ -245,6 +280,7 @@ func (m *Manager) listenFileEvents() {
 	}()
 }
 
+// initProcessor initializes the event processor
 func (m *Manager) initProcessor(ctx context.Context) {
 	// Initialize fsnotify watcher
 	processor := NewEventProcessor(ctx).WithProcessor(Tab)
@@ -252,6 +288,7 @@ func (m *Manager) initProcessor(ctx context.Context) {
 	m.Processor = processor
 }
 
+// listenOutput listens for output events and logs and updates the respective TUI view
 func (m *Manager) listenOutput() {
 	go func() {
 		for {
@@ -265,6 +302,7 @@ func (m *Manager) listenOutput() {
 	}()
 }
 
+// initKeybindings initializes the keybindings for the gocui instance
 func initKeybindings(g *gocui.Gui) error {
 	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone,
 		func(g *gocui.Gui, v *gocui.View) error {
