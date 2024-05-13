@@ -1,0 +1,12 @@
+{
+    "path": [
+        {
+        "raw": "~/Desktop/Projects/MyProject",
+        "recursive": true
+        }
+    ],
+    "args": {
+        "path": "~/Desktop/Projects/MyProject,~/Desktop/Projects/MyProject2",
+        "recursive": true
+    }
+}
