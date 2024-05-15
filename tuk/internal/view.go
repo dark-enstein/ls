@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"tuk/internal/config"
@@ -45,18 +44,15 @@ func WithConfig(config *config.Config) PlaneOption {
 		for _, path := range config.Paths {
 			paths = append(paths, path.Raw)
 		}
-		log.Println("config paths", paths)
 
 		// funnel args paths into slice
 		if config.Args.Path != "" {
 			splice := strings.Split(config.Args.Path, ",")
 			paths = append(paths, splice...)
 		}
-		log.Println("args paths", paths)
 
 		// consolidate paths
 		p.ps = append(p.ps, paths...)
-		log.Println("all paths", p.ps)
 	}
 }
 
@@ -77,17 +73,15 @@ func NewPlane(ctx context.Context, opts ...PlaneOption) (*Plane, error) {
 	p := &Plane{
 		m: m,
 	}
-	log.Printf("plane structure i: %#v", p.ps)
 
 	for i := range opts {
 		opts[i](p)
 	}
-	log.Printf("plane structure ii: %#v", p.ps)
 
 	return p, err
 }
 
-// Listen starts listening for events and logs
+// Listen starts listening for events
 func (p *Plane) Listen() {
 	p.m.Listen()
 }

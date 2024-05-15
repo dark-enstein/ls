@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"strings"
 )
 
 // Config is the configuration for tuk
@@ -40,10 +41,14 @@ func LoadConfig(ctx context.Context, args *Args) (*Config, error) {
 	var config = &Config{}
 	config.Args = *args
 
-	log.Printf("config path: %#v\n", config)
 	bytes, err := os.ReadFile(DefaultConfigPath)
 	if err != nil {
-		if os.IsNotExist(err) && args.Path != "" {
+		if os.IsNotExist(err) {
+			if args.Path == "" {
+				log.Println("path argument and config file not provided, using current directory as default")
+				config.Paths = append(config.Paths, Path{Raw: ".", Recursive: false})
+				return config, nil
+			}
 			return config, nil
 		}
 		return nil, err
@@ -56,4 +61,12 @@ func LoadConfig(ctx context.Context, args *Args) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+func (c *Config) AllPaths() string {
+	flat := make([]string, 0, len(c.Paths)+1)
+	for _, p := range c.Paths {
+		flat = append(flat, p.Raw)
+	}
+	return strings.Join(append(flat, c.Args.Path), ",")
 }

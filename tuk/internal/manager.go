@@ -84,12 +84,6 @@ func NewManager(ctx context.Context) (*Manager, error) {
 		return nil, err
 	}
 
-	// Initialize keybindings
-	err = initKeybindings(m.g)
-	if err != nil {
-		return nil, err
-	}
-
 	// Set managers
 	m.SetManagers()
 
@@ -104,12 +98,22 @@ func (m *Manager) Init() error {
 	}
 
 	m.initProcessor(context.Background())
+
+	// Initializing logger
+	m.listenOutput()
+
+	// Initialize keybindings
+	m.Log("Initializing keybindings")
+	err = m.initKeybindings(m.g)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // Listen starts listening for events and logs
 func (m *Manager) Listen() {
-	m.listenOutput()
+	m.Log("Listening for file events")
 	m.listenFileEvents()
 }
 
@@ -146,6 +150,8 @@ func (dm *DefaultManager) Layout(g *gocui.Gui) error {
 	// 	})
 	// 	count++
 	// }
+
+	// TODO: Use percentages for dimensions, and possible set it configurable
 	if v, err := g.SetView(Events, 0, 0, dm.maxX-1, dm.maxY-1); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
@@ -303,9 +309,10 @@ func (m *Manager) listenOutput() {
 }
 
 // initKeybindings initializes the keybindings for the gocui instance
-func initKeybindings(g *gocui.Gui) error {
+func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone,
 		func(g *gocui.Gui, v *gocui.View) error {
+			m.Log("Quitting...")
 			return gocui.ErrQuit
 		}); err != nil {
 		return err
@@ -327,6 +334,7 @@ func initKeybindings(g *gocui.Gui) error {
 	return nil
 }
 
+// scrollView scrolls the view by the specified amount
 func scrollView(v *gocui.View, dy int) error {
 	if v != nil {
 		v.Autoscroll = false
