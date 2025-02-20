@@ -5,8 +5,8 @@ BASE_URL="https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid"
 
 # Check if input file is provided
 if [ -z "$1" ]; then
-    echo "Usage: $0 <cid_list.txt> [output_format]"
-    echo "Example output formats: SDF, SMILES, InChI, JSON, XML"
+    echo "Usage: $0 <cid_list.txt>"
+    echo "CID is downloaded in SDF format"
     exit 1
 fi
 
